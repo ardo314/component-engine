@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="NATS.Net" Version="2.*" />
+    <PackageReference Include="MessagePack" Version="2.*" />
+  </ItemGroup>
+</Project>
