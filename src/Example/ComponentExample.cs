@@ -10,7 +10,7 @@ public struct Pose
 
 public interface IPose : IComponent<Pose> { }
 
-public class InMemoryPose : IPose
+public class InMemoryPose : ComponentBase<IPose>
 {
     private readonly Dictionary<Entity, Pose> _poses = new();
 
@@ -44,7 +44,7 @@ public class InMemoryPose : IPose
     }
 }
 
-public class DatabasePose : IPose
+public class DatabasePose : ComponentBase<IPose>
 {
     public async Task OnAddAsync(Entity entity, Pose? initialData, CancellationToken ct = default)
     {
