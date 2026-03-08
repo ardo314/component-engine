@@ -303,3 +303,86 @@ internal sealed class ComponentInfo : IEquatable<ComponentInfo>
 
     public override int GetHashCode() => FullyQualifiedName.GetHashCode();
 }
+
+/// <summary>
+/// Info about a <c>ComponentBase&lt;TContract&gt;</c> subclass for partial class generation.
+/// The generator emits event backing fields, raise methods, and the contract interface marker.
+/// </summary>
+internal sealed class ComponentImplInfo : IEquatable<ComponentImplInfo>
+{
+    /// <summary>The concrete class name (e.g., "InMemoryPose").</summary>
+    public string ClassName { get; }
+
+    /// <summary>Fully qualified name with global:: prefix.</summary>
+    public string FullyQualifiedClassName { get; }
+
+    /// <summary>Namespace of the class, or null if global.</summary>
+    public string? Namespace { get; }
+
+    /// <summary>The contract interface name (e.g., "IPose").</summary>
+    public string ContractInterfaceName { get; }
+
+    /// <summary>Fully qualified contract interface name.</summary>
+    public string FullyQualifiedContractName { get; }
+
+    /// <summary>Fully qualified data type name (e.g., "global::Example.Pose").</summary>
+    public string FullyQualifiedDataType { get; }
+
+    /// <summary>Short data type name (e.g., "Pose").</summary>
+    public string DataTypeName { get; }
+
+    public ComponentImplInfo(
+        string className,
+        string fullyQualifiedClassName,
+        string? ns,
+        string contractInterfaceName,
+        string fullyQualifiedContractName,
+        string dataTypeName,
+        string fullyQualifiedDataType
+    )
+    {
+        ClassName = className;
+        FullyQualifiedClassName = fullyQualifiedClassName;
+        Namespace = ns;
+        ContractInterfaceName = contractInterfaceName;
+        FullyQualifiedContractName = fullyQualifiedContractName;
+        DataTypeName = dataTypeName;
+        FullyQualifiedDataType = fullyQualifiedDataType;
+    }
+
+    public static ComponentImplInfo? From(INamedTypeSymbol symbol)
+    {
+        var contractType = symbol.GetComponentContractType();
+        if (contractType is null)
+            return null;
+
+        var dataType = contractType.GetComponentDataType();
+        if (dataType is null)
+            return null;
+
+        return new ComponentImplInfo(
+            symbol.Name,
+            symbol.FullyQualifiedName(),
+            symbol.GetNamespaceName(),
+            contractType.Name,
+            contractType.FullyQualifiedName(),
+            dataType.Name,
+            dataType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+        );
+    }
+
+    public bool Equals(ComponentImplInfo? other)
+    {
+        if (other is null)
+            return false;
+        if (ReferenceEquals(this, other))
+            return true;
+        return FullyQualifiedClassName == other.FullyQualifiedClassName
+            && FullyQualifiedContractName == other.FullyQualifiedContractName
+            && FullyQualifiedDataType == other.FullyQualifiedDataType;
+    }
+
+    public override bool Equals(object? obj) => Equals(obj as ComponentImplInfo);
+
+    public override int GetHashCode() => FullyQualifiedClassName.GetHashCode();
+}

@@ -13,7 +13,8 @@ Engine.sln
 ├── src/
 │   ├── Engine.Core/          # Shared types, contracts, extension interfaces
 │   ├── Engine.Generators/     # Roslyn incremental source generator (netstandard2.0)
-│   └── Engine.Runtime/        # Executable host — assembly scanning, NATS, dispatch
+│   ├── Engine.Runtime/        # Executable host — assembly scanning, NATS, dispatch
+│   └── Example/               # Example extension demonstrating the component model
 ├── Directory.Build.props      # Shared build settings (net9.0, nullable, warnings-as-errors)
 └── Directory.Packages.props   # Central package version management
 ```
@@ -23,12 +24,17 @@ Engine.sln
 The source-of-truth for the system's contract surface. Contains:
 
 - **`EntityId`** — a `readonly record struct` wrapping a `Guid` that uniquely identifies an Entity.
-- **`IComponent`** — marker interface for all components (data attached to an Entity).
+- **`IComponent`** — base interface for all components. Defines `OnRemoveAsync(Entity, CancellationToken)`.
+- **`IComponent<TData>`** — generic interface extending `IComponent` that defines typed data access for a component: `OnAddAsync`, `GetAsync`, `SetAsync`, plus `DataUpdated` and `DataRemoved` events that implementations must fire.
+- **`ComponentBase<TContract>`** — abstract base class for component implementations. Users subclass this with their contract interface as the type parameter (e.g., `class InMemoryPose : ComponentBase<IPose>`). The source generator detects subclasses, resolves `TData` from the contract, and emits a partial class with event infrastructure and the contract interface marker.
+- **`ComponentHandle<TData>`** — entity-bound view of a component. Wraps `IComponent<TData>` + `Entity`, providing entity-less `GetAsync()`/`SetAsync()` and per-entity `Updated`/`Removed` events. Returned by `Entity.AddComponentAsync` and `Entity.GetComponentAsync`.
+- **`IComponentHandle`** — non-generic base interface for `ComponentHandle<TData>`, enabling single-type-parameter lookups.
+- **`Entity`** — concrete class (replaces the former `IEntity` interface) representing an entity in the world. Contains the component registry that enforces one-implementation-per-contract uniqueness. Provides `AddComponentAsync`, `GetComponentAsync`, `HasComponentAsync`, `RemoveComponentAsync`, and `GetBehaviourAsync`.
 - **`IBehaviour`** — marker interface for all behaviours (remote logic operating on components).
-- **`IEntity`** — contract for entity operations: `AddComponentAsync`, `RemoveComponentAsync`, `GetComponentAsync`, `HasComponentAsync`.
-- **`IWorld`** — contract for entity lifecycle: `CreateEntityAsync`, `DestroyEntityAsync`, `GetEntityAsync`.
-- **`IExtension`** — entry point for extensions loaded by the runtime. Each extension assembly implements this interface to register its components and behaviours.
-- **`IExtensionRegistrar`** — provided by the runtime to extensions during registration. Extensions call `AddComponent<T>()` and `AddBehaviour<TContract, TImpl>()` to declare their types.
+- **`IWorld`** — contract for entity lifecycle: `CreateEntityAsync`, `DestroyEntityAsync`, `GetEntityAsync`. Returns `Entity` instances.
+- **`Plugin`** — abstract base class for user plugins. The runtime sets `World` before calling `OnStartAsync`/`OnStopAsync`.
+- **`IExtension`** — entry point for extensions loaded by the runtime. Each extension assembly implements this interface to register its components, behaviours, and plugins.
+- **`IExtensionRegistrar`** — provided by the runtime to extensions during registration. Extensions call `AddComponent<T>()`, `AddBehaviour<TContract, TImpl>()`, and `AddPlugin<T>()` to declare their types.
 
 Engine.Core has **no dependency** on NATS, MessagePack, or any infrastructure concern. It is a pure contract/types library.
 
@@ -41,15 +47,17 @@ The generator scans each consuming compilation for:
 1. **Interfaces extending `IBehaviour`** → emits **client proxy** classes (one per interface) that serialize method calls to NATS with MessagePack.
 2. **Concrete classes implementing `IBehaviour`-derived interfaces** → emits **server dispatch stubs** (one per class) that subscribe to NATS subjects, deserialize requests, call the implementation, and reply.
 3. **Types implementing `IComponent`** → emits a **`EngineComponentResolver`** that lists all component types and provides pre-configured `MessagePackSerializerOptions`.
+4. **Classes extending `ComponentBase<TContract>`** → emits **partial classes** that add the contract interface, `DataUpdated`/`DataRemoved` events, and `RaiseUpdated`/`RaiseRemoved` helper methods.
 
 Internal structure:
 
-- `EngineGenerator` — the `IIncrementalGenerator` entry point; registers three pipelines.
-- `Models/GeneratorModels.cs` — equatable data types (`BehaviourInterfaceInfo`, `BehaviourImplInfo`, `ComponentInfo`, `MethodInfo`, `ParameterInfo`) that carry symbol info through incremental pipelines.
+- `EngineGenerator` — the `IIncrementalGenerator` entry point; registers four pipelines.
+- `Models/GeneratorModels.cs` — equatable data types (`BehaviourInterfaceInfo`, `BehaviourImplInfo`, `ComponentInfo`, `ComponentImplInfo`, `MethodInfo`, `ParameterInfo`) that carry symbol info through incremental pipelines.
 - `Emitters/ClientProxyEmitter.cs` — generates `{Name}Proxy` classes from behaviour interfaces.
 - `Emitters/ServerStubEmitter.cs` — generates `{Name}Dispatcher` classes from behaviour implementations.
 - `Emitters/MessagePackEmitter.cs` — generates `EngineComponentResolver` from component types.
-- `Helpers/SymbolExtensions.cs` — Roslyn symbol utilities (e.g., `IsBehaviourInterface()`, `IsComponentImplementation()`).
+- `Emitters/ComponentEmitter.cs` — generates partial classes for `ComponentBase<TContract>` subclasses with event infrastructure.
+- `Helpers/SymbolExtensions.cs` — Roslyn symbol utilities (e.g., `IsBehaviourInterface()`, `IsComponentImplementation()`, `IsComponentBaseSubclass()`, `GetComponentContractType()`, `GetComponentDataType()`).
 - `Helpers/SubjectNaming.cs` — deterministic NATS subject derivation: `behaviour.{TypeName}.{MethodName}` (strips leading `I`, strips `Async` suffix).
 
 References: `Microsoft.CodeAnalysis.CSharp`, `Microsoft.CodeAnalysis.Analyzers` (both `PrivateAssets="all"`)
@@ -59,8 +67,9 @@ References: `Microsoft.CodeAnalysis.CSharp`, `Microsoft.CodeAnalysis.Analyzers` 
 An executable host process — pure infrastructure, zero domain logic. Responsibilities:
 
 - **Assembly scanning** — `ExtensionLoader` discovers and loads extension DLLs from a configurable directory (default `/app/extensions`), finds all `IExtension` implementations.
-- **Extension registration** — `ExtensionRegistrar` (implements `IExtensionRegistrar`) collects component and behaviour type registrations from each extension.
+- **Extension registration** — `ExtensionRegistrar` (implements `IExtensionRegistrar`) collects component, behaviour, and plugin type registrations from each extension.
 - **NATS connection** — `EngineHost` manages the NATS connection lifecycle.
+- **Plugin lifecycle** — `EngineHost` instantiates registered `Plugin` types, injects the world, calls `OnStartAsync` at startup and `OnStopAsync` during graceful shutdown.
 - **Message dispatch** — routes incoming NATS messages to the appropriate behaviour implementation via generated dispatcher stubs.
 - **MessagePack setup** — uses the generated `EngineComponentResolver` to configure serialization.
 
@@ -79,6 +88,67 @@ The generator is referenced as an analyzer:
 ```
 
 References: `Engine.Core`; Analyzer: `Engine.Generators`; Packages: `NATS.Net`, `MessagePack`
+
+## Component Model
+
+### Defining a Component
+
+A component is defined by a **contract interface** that extends `IComponent<TData>`, where `TData` is the data type the component stores per entity:
+
+```csharp
+public struct Pose { public Vector3 Position; public Quaternion Rotation; }
+public interface IPose : IComponent<Pose> { }
+```
+
+### Implementing a Component
+
+Concrete implementations extend `ComponentBase<TContract>` and must be marked `partial`:
+
+```csharp
+public partial class InMemoryPose : ComponentBase<IPose>
+{
+    private readonly Dictionary<EntityId, Pose> _poses = new();
+
+    public Task OnAddAsync(Entity entity, Pose initialData, CancellationToken ct = default) { ... }
+    public Task OnRemoveAsync(Entity entity, CancellationToken ct = default)
+    {
+        _poses.Remove(entity.Id);
+        RaiseRemoved(entity);        // ← fire event after successful removal
+        return Task.CompletedTask;
+    }
+    public Task<Pose> GetAsync(Entity entity, CancellationToken ct = default) { ... }
+    public Task SetAsync(Entity entity, Pose data, CancellationToken ct = default)
+    {
+        _poses[entity.Id] = data;
+        RaiseUpdated(entity, data);  // ← fire event after successful write
+        return Task.CompletedTask;
+    }
+}
+```
+
+The source generator emits a partial class that:
+- Adds `: IPose` to the class declaration
+- Implements `DataUpdated` and `DataRemoved` events
+- Provides `RaiseUpdated(Entity, TData)` and `RaiseRemoved(Entity)` helper methods
+
+### One Implementation Per Contract
+
+An entity can only have **one component implementation** per contract interface at a time. Adding a second implementation of the same contract (e.g., adding `DatabasePose` when `InMemoryPose` is already attached via `IPose`) throws `InvalidOperationException`.
+
+### Component Lookup
+
+Components can be looked up by **either** their contract interface or concrete type:
+
+```csharp
+await entity.GetComponentAsync<IPose, Pose>(ct);          // by contract → returns handle
+await entity.GetComponentAsync<InMemoryPose, Pose>(ct);   // by concrete → returns handle
+await entity.HasComponentAsync<IPose>(ct);                 // by contract → true
+await entity.HasComponentAsync<InMemoryPose>(ct);          // by concrete → true
+```
+
+### Events
+
+Events are **fired by the implementation**, not by the framework. Implementations call `RaiseUpdated(entity, data)` in `SetAsync` and `RaiseRemoved(entity)` in `OnRemoveAsync` when the operation succeeds. The `ComponentHandle<TData>` filters these per-entity and exposes user-friendly `Updated` and `Removed` events without the entity parameter.
 
 ## Extension Model
 
@@ -104,10 +174,11 @@ From the runtime's perspective, all extensions are identical — there is no pri
 
 | Concept       | Description |
 |---------------|-------------|
-| **Entity**    | A uniquely identified object in the world. Analogous to Unity's `GameObject`. Has no behaviour of its own; it is a container for Components. |
-| **Component** | Data or state attached to an Entity. Can be added and removed at runtime. |
+| **Entity**    | A uniquely identified object in the world. Analogous to Unity's `GameObject`. Has no behaviour of its own; it is a container for Components. Implemented as a concrete `Entity` class with `EntityId`. |
+| **Component** | Typed data attached to an Entity via `IComponent<TData>`. One implementation per contract interface. Implementations extend `ComponentBase<TContract>` and fire events explicitly. |
 | **Behaviour** | Logic that operates on Components. Each Behaviour is a remote service — its interface lives in Core, its proxy and server stub are generated by `Engine.Generators`, and its implementation lives in an extension. |
-| **Extension** | A loadable module that registers Components and Behaviours with the runtime via `IExtension`. |
+| **Plugin**    | A runtime lifecycle participant. Extends `Plugin` to receive `OnStartAsync`/`OnStopAsync` callbacks with a `World` reference. |
+| **Extension** | A loadable module that registers Components, Behaviours, and Plugins with the runtime via `IExtension`. |
 
 ## Communication
 
@@ -136,6 +207,8 @@ NATS is installed in the dev container (v2.12.4) for local development.
 2. **Server dispatch stubs** — for each concrete class implementing an `IBehaviour`-derived interface, a `{Name}Dispatcher` class is generated. The dispatcher subscribes to the corresponding NATS subjects, deserializes incoming payloads, invokes the implementation, serializes the result, and replies.
 
 3. **MessagePack component resolver** — for each `IComponent` implementation, the type is registered in a generated `EngineComponentResolver` class that provides a pre-configured `MessagePackSerializerOptions` and a `ComponentTypes` list.
+
+4. **Component partial classes** — for each `ComponentBase<TContract>` subclass, a partial class is generated that adds the contract interface, `DataUpdated`/`DataRemoved` events, and `RaiseUpdated`/`RaiseRemoved` helper methods. This separates the event plumbing from the implementation logic.
 
 ### Subject Naming Convention
 

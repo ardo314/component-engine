@@ -11,6 +11,7 @@ public sealed class EngineHost : IAsyncDisposable
     private readonly NatsConnection _connection;
     private readonly ExtensionRegistrar _registrar = new();
     private readonly List<IExtension> _extensions = [];
+    private readonly List<Plugin> _plugins = [];
 
     public EngineHost(NatsOpts? opts = null)
     {
@@ -52,8 +53,21 @@ public sealed class EngineHost : IAsyncDisposable
         Console.WriteLine(
             $"Engine runtime started — {_extensions.Count} extension(s), "
                 + $"{_registrar.ComponentTypes.Count} component(s), "
-                + $"{_registrar.BehaviourTypes.Count} behaviour(s)"
+                + $"{_registrar.BehaviourTypes.Count} behaviour(s), "
+                + $"{_registrar.PluginTypes.Count} plugin(s)"
         );
+
+        // 4. Instantiate and start plugins
+        // TODO: Create a proper IWorld implementation
+        foreach (var pluginType in _registrar.PluginTypes)
+        {
+            if (Activator.CreateInstance(pluginType) is Plugin plugin)
+            {
+                // plugin.Initialize(world); // Set when IWorld implementation exists
+                _plugins.Add(plugin);
+                await plugin.OnStartAsync(ct);
+            }
+        }
 
         // TODO: Set up NATS subscriptions based on registered behaviours
     }
@@ -72,7 +86,11 @@ public sealed class EngineHost : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            // Graceful shutdown
+            // Graceful shutdown — stop plugins in reverse order
+            for (var i = _plugins.Count - 1; i >= 0; i--)
+            {
+                await _plugins[i].OnStopAsync(CancellationToken.None);
+            }
         }
     }
 

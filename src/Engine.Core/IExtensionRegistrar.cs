@@ -18,4 +18,10 @@ public interface IExtensionRegistrar
     void AddBehaviour<TContract, TImplementation>()
         where TContract : IBehaviour
         where TImplementation : TContract;
+
+    /// <summary>
+    /// Registers a plugin that will be started by the runtime.
+    /// </summary>
+    void AddPlugin<T>()
+        where T : Plugin, new();
 }

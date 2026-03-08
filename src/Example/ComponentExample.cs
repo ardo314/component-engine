@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Engine.Core;
 
 namespace Example;
 
@@ -10,47 +11,47 @@ public struct Pose
 
 public interface IPose : IComponent<Pose> { }
 
-public class InMemoryPose : ComponentBase<IPose>
+public partial class InMemoryPose : ComponentBase<IPose>
 {
-    private readonly Dictionary<Entity, Pose> _poses = new();
+    private readonly Dictionary<EntityId, Pose> _poses = new();
 
-    public Task OnAddAsync(Entity entity, Pose? initialData, CancellationToken ct = default)
+    public Task OnAddAsync(Entity entity, Pose initialData, CancellationToken ct = default)
     {
-        _poses[entity] =
-            initialData ?? new Pose { Position = Vector3.Zero, Rotation = Quaternion.Identity };
+        _poses[entity.Id] = initialData;
         return Task.CompletedTask;
     }
 
     public Task OnRemoveAsync(Entity entity, CancellationToken ct = default)
     {
-        _poses.Remove(entity);
+        _poses.Remove(entity.Id);
+        RaiseRemoved(entity);
         return Task.CompletedTask;
     }
 
     public Task<Pose> GetAsync(Entity entity, CancellationToken ct = default)
     {
-        if (!_poses.TryGetValue(entity, out var data))
+        if (!_poses.TryGetValue(entity.Id, out var data))
         {
             data = new Pose { Position = Vector3.Zero, Rotation = Quaternion.Identity };
-            _poses[entity] = data;
+            _poses[entity.Id] = data;
         }
         return Task.FromResult(data);
     }
 
     public Task SetAsync(Entity entity, Pose data, CancellationToken ct = default)
     {
-        _poses[entity] = data;
+        _poses[entity.Id] = data;
+        RaiseUpdated(entity, data);
         return Task.CompletedTask;
     }
 }
 
-public class DatabasePose : ComponentBase<IPose>
+public partial class DatabasePose : ComponentBase<IPose>
 {
-    public async Task OnAddAsync(Entity entity, Pose? initialData, CancellationToken ct = default)
+    public async Task OnAddAsync(Entity entity, Pose initialData, CancellationToken ct = default)
     {
         var database = await entity.GetBehaviourAsync<IDatabase>();
         await database.CreateRecordAsync(entity, initialData, ct);
-        // In a real implementation, this might create a record in the database for the entity's pose.
         Console.WriteLine($"Entity {entity} added to DatabasePose component.");
     }
 
@@ -58,14 +59,12 @@ public class DatabasePose : ComponentBase<IPose>
     {
         var database = await entity.GetBehaviourAsync<IDatabase>();
         await database.DeleteRecordAsync(entity, ct);
-        // In a real implementation, this might delete the record from the database.
+        RaiseRemoved(entity);
         Console.WriteLine($"Entity {entity} removed from DatabasePose component.");
     }
 
-    // Imagine this connects to a database to get pose data for entities.
     public Task<Pose> GetAsync(Entity entity, CancellationToken ct = default)
     {
-        // Placeholder implementation
         var data = new Pose
         {
             Position = new Vector3(1, 2, 3),
@@ -76,68 +75,76 @@ public class DatabasePose : ComponentBase<IPose>
 
     public Task SetAsync(Entity entity, Pose data, CancellationToken ct = default)
     {
-        // Placeholder implementation - in a real system this would update the database.
         Console.WriteLine(
             $"Setting pose for entity {entity} to position {data.Position} and rotation {data.Rotation}"
         );
+        RaiseUpdated(entity, data);
         return Task.CompletedTask;
     }
 }
 
+/// <summary>
+/// Example behaviour contract — referenced by DatabasePose but not implemented here.
+/// </summary>
+public interface IDatabase : IBehaviour
+{
+    Task CreateRecordAsync(Entity entity, Pose data, CancellationToken ct = default);
+    Task DeleteRecordAsync(Entity entity, CancellationToken ct = default);
+}
+
 public class SomeUserPlugin : Plugin
 {
-    public async Task OnStartAsync()
+    public override async Task OnStartAsync(CancellationToken ct = default)
     {
-        // World is defined in plugin
-        var entity = await world.CreateEntityAsync();
+        var entity = await World.CreateEntityAsync(ct);
 
-        // Adding components
-        // Needs to be a specific implementation, can't use IPose
-        var pose = await _entity.AddComponentAsync<InMemoryPose>();
-
-        // This should fail, only one implementation of IPose can be added at a time
-        await _entity.AddComponentAsync<DatabasePose>();
-
-        // Getting component data should return the data, not the implementation
-        // Either should work
-        pose = await _entity.GetComponentAsync<IPose>();
-        var pose2 = await _entity.GetComponentAsync<InMemoryPose>();
-
-        // This should be null, as DatabasePose was not added successfully
-        var pose3 = await _entity.GetComponentAsync<DatabasePose>();
-
-        pose.Updated += (data) =>
-        {
-            Console.WriteLine($"Entity {entity} pose updated: {data}");
-        };
-        pose.Removed += () =>
-        {
-            Console.WriteLine($"Entity {entity} pose removed");
-        };
-
-        var poseData = await pose.GetAsync();
-
-        await pose.SetAsync(
-            new Pose
-            {
-                Position = new Vector3(1, 2, 3),
-                Rotation = Quaternion.CreateFromYawPitchRoll(0.1f, 0.2f, 0.3f),
-            }
+        // Adding components — must use concrete type
+        var pose = await entity.AddComponentAsync<InMemoryPose, Pose>(
+            new Pose { Position = Vector3.Zero, Rotation = Quaternion.Identity },
+            ct
         );
 
-        await _entity.HasComponentAsync<IPose>(); // Should be true
-        await _entity.HasComponentAsync<InMemoryPose>(); // Should be true
-        await _entity.HasComponentAsync<DatabasePose>(); // Should be false
+        // Getting component data — either interface or concrete type
+        var pose2 = await entity.GetComponentAsync<IPose, Pose>(ct);
+        var pose3 = await entity.GetComponentAsync<InMemoryPose, Pose>(ct);
 
-        // Removing components
-        // Either should work without error, and remove the component, removing non-existent components should not error
-        await _entity.RemoveComponentAsync<IPose>();
-        await _entity.RemoveComponentAsync<InMemoryPose>();
+        // DatabasePose was never added, so this returns null
+        var pose4 = await entity.GetComponentAsync<DatabasePose, Pose>(ct);
 
-        await world.DestroyEntityAsync(entity);
+        if (pose2 is not null)
+        {
+            pose2.Updated += (data) =>
+            {
+                Console.WriteLine($"Entity {entity} pose updated: {data}");
+            };
+            pose2.Removed += () =>
+            {
+                Console.WriteLine($"Entity {entity} pose removed");
+            };
+
+            var poseData = await pose2.GetAsync(ct);
+
+            await pose2.SetAsync(
+                new Pose
+                {
+                    Position = new Vector3(1, 2, 3),
+                    Rotation = Quaternion.CreateFromYawPitchRoll(0.1f, 0.2f, 0.3f),
+                },
+                ct
+            );
+        }
+
+        await entity.HasComponentAsync<IPose>(ct); // true
+        await entity.HasComponentAsync<InMemoryPose>(ct); // true
+        await entity.HasComponentAsync<DatabasePose>(ct); // false
+
+        // Removing components — either interface or concrete type works
+        await entity.RemoveComponentAsync<IPose>(ct);
+
+        await World.DestroyEntityAsync(entity, ct);
     }
 
-    public Task OnStopAsync()
+    public override Task OnStopAsync(CancellationToken ct = default)
     {
         return Task.CompletedTask;
     }

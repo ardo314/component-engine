@@ -58,6 +58,20 @@ public sealed class EngineGenerator : IIncrementalGenerator
             componentTypes.Collect(),
             static (spc, symbols) => MessagePackEmitter.Emit(spc, symbols)
         );
+
+        // Pipeline 4: ComponentBase<TContract> subclasses → partial class with events + interface
+        var componentImpls = context
+            .SyntaxProvider.CreateSyntaxProvider(
+                predicate: static (node, _) => node is ClassDeclarationSyntax,
+                transform: static (ctx, _) => GetComponentImpl(ctx)
+            )
+            .Where(static s => s is not null)
+            .Select(static (s, _) => s!);
+
+        context.RegisterSourceOutput(
+            componentImpls.Collect(),
+            static (spc, symbols) => ComponentEmitter.Emit(spc, symbols)
+        );
     }
 
     private static BehaviourInterfaceInfo? GetBehaviourInterface(GeneratorSyntaxContext ctx)
@@ -85,5 +99,14 @@ public sealed class EngineGenerator : IIncrementalGenerator
             return null;
 
         return ComponentInfo.From(symbol);
+    }
+
+    private static ComponentImplInfo? GetComponentImpl(GeneratorSyntaxContext ctx)
+    {
+        var symbol = ctx.SemanticModel.GetDeclaredSymbol(ctx.Node) as INamedTypeSymbol;
+        if (symbol is null || !symbol.IsComponentBaseSubclass())
+            return null;
+
+        return ComponentImplInfo.From(symbol);
     }
 }
