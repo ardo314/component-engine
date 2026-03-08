@@ -14,16 +14,20 @@ Engine.sln
 │   ├── Engine.Core/          # Shared types, contracts, interfaces
 │   ├── Engine.Backend/        # Server-side entity lifecycle & hosting
 │   └── Engine.Client/         # Ergonomic client API
-└── Directory.Build.props      # Shared build settings (net9.0, nullable, warnings-as-errors)
+├── Directory.Build.props      # Shared build settings (net9.0, nullable, warnings-as-errors)
+└── Directory.Packages.props   # Central package version management
 ```
 
 ### Engine.Core
 
 The source-of-truth for the system's contract surface. Contains:
 
-- **Interfaces** that define Component and Behaviour contracts. These are the input for source generation.
-- **Shared types** used by both client and server (entity identifiers, component descriptors, common enums/value objects).
-- **Attributes** that annotate interfaces for the source generator (e.g., marking a method as fire-and-forget vs. request/reply).
+- **`EntityId`** — a `readonly record struct` wrapping a `Guid` that uniquely identifies an Entity.
+- **`IComponent`** — marker interface for all components (data attached to an Entity).
+- **`IBehaviour`** — marker interface for all behaviours (remote logic operating on components).
+- **`IEntity`** — contract for entity operations: `AddComponentAsync`, `RemoveComponentAsync`, `GetComponentAsync`, `HasComponentAsync`.
+- **`IWorld`** — contract for entity lifecycle: `CreateEntityAsync`, `DestroyEntityAsync`, `GetEntityAsync`.
+- **Attributes** that annotate interfaces for the source generator (e.g., marking a method as fire-and-forget vs. request/reply) — planned.
 
 Engine.Core has **no dependency** on NATS, MessagePack, or any infrastructure concern. It is a pure contract/types library.
 
@@ -31,10 +35,11 @@ Engine.Core has **no dependency** on NATS, MessagePack, or any infrastructure co
 
 Server-side runtime. Responsibilities:
 
-- **Entity lifecycle** — creation, destruction, ownership.
-- **Component management** — adding, removing, and querying Components on Entities.
-- **Behaviour hosting** — running Behaviour implementations as services that listen on NATS subjects.
-- **Server stubs** — generated from Engine.Core interfaces by the source generator; the developer implements the stub to provide behaviour logic.
+- **Entity lifecycle** — creation, destruction, ownership via `BackendWorld` (implements `IWorld`).
+- **Entity storage** — `EntityStore` provides thread-safe in-memory storage of `EntityRecord` instances.
+- **Component management** — `EntityRecord` manages adding, removing, and querying `IComponent` instances on an entity. `BackendEntity` (implements `IEntity`) wraps a record into the core interface.
+- **Behaviour hosting** — running Behaviour implementations as services that listen on NATS subjects (planned).
+- **Server stubs** — generated from Engine.Core interfaces by the source generator (planned).
 
 References: `Engine.Core`
 
@@ -47,8 +52,10 @@ var entity = await world.CreateEntity();
 await entity.AddComponent<MyComponent>();
 ```
 
-- **Client proxies** — generated from Engine.Core interfaces by the source generator; each proxy serializes calls with MessagePack and sends them over NATS.
-- **Connection management** — maintains the NATS connection and exposes it through a simple API.
+- **`EngineConnection`** — manages the NATS connection lifecycle (`IAsyncDisposable`).
+- **`ClientWorld`** — implements `IWorld`; communicates with the backend over NATS.
+- **`ClientEntity`** — implements `IEntity`; publishes component operations to NATS subjects.
+- **Client proxies** — generated from Engine.Core interfaces by the source generator (planned).
 
 References: `Engine.Core`
 
@@ -66,7 +73,7 @@ References: `Engine.Core`
 
 - **Request/Reply** — used for operations that return a result (e.g., creating an entity, querying a component).
 - **Publish/Subscribe** — used for broadcasting events (e.g., component added, entity destroyed).
-- **Subject conventions** — subjects are derived deterministically from the interface and method names defined in Engine.Core (exact convention TBD during implementation).
+- **Subject conventions** — subjects follow the pattern `entity.{id}.{operation}` (e.g., `entity.{id}.component.add.{TypeName}`, `entity.{id}.destroy`). Derived deterministically from entity IDs and component type names.
 
 NATS is installed in the dev container (v2.12.4) for local development.
 
@@ -96,5 +103,15 @@ The generator project will be added to the solution as `Engine.Generators` (or s
 | Nullable reference types | Enabled |
 | Implicit usings          | Enabled |
 | Warnings as errors       | Enabled |
+| Package management       | Central (`Directory.Packages.props`) |
 | Formatter               | CSharpier 1.2.6 (format on save) |
 | Dev container            | `mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim` + NATS server |
+
+### NuGet Packages
+
+Versions are pinned in `Directory.Packages.props`:
+
+| Package     | Version | Used By |
+|-------------|---------|---------|
+| NATS.Net    | 2.7.2   | Backend, Client |
+| MessagePack | 3.1.4   | Backend, Client |
