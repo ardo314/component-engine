@@ -1,6 +1,6 @@
 using Engine.Core;
 
-namespace Engine.Backend;
+namespace Engine.World;
 
 /// <summary>
 /// Server-side world implementation that manages entity lifecycle.

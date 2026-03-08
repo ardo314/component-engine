@@ -1,6 +1,6 @@
 using Engine.Core;
 
-namespace Engine.Backend;
+namespace Engine.World;
 
 /// <summary>
 /// Server-side entity implementation backed by an <see cref="EntityRecord"/>.

@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using Engine.Core;
 
-namespace Engine.Backend;
+namespace Engine.World;
 
 /// <summary>
 /// Holds an entity's identity and its attached components.
