@@ -17,6 +17,10 @@ Engine.sln
 │   ├── Engine.Math/           # Math primitives and component contracts (Pose, IPose)
 │   ├── Engine.Runtime/        # Executable host — assembly scanning, NATS, dispatch
 │   └── Example/               # Example extension demonstrating the component model
+├── modules/
+│   ├── Modules.InMemoryPose/  # In-memory implementation of IPose
+│   ├── Modules.DatabasePose/  # Database-backed implementation of IPose
+│   └── Modules.InMemoryParent/# In-memory implementation of IParent
 ├── Directory.Build.props      # Shared build settings (net9.0, nullable, warnings-as-errors)
 └── Directory.Packages.props   # Central package version management
 ```
@@ -109,6 +113,14 @@ The generator is referenced as an analyzer:
 
 References: `Engine.Core`; Analyzer: `Engine.Generators`; Packages: `NATS.Net`, `MessagePack`
 
+### Modules
+
+The `modules/` directory contains concrete component implementations — swappable storage strategies that are separate from the contract definitions in `src/`. Each module references its contract project and the source generator.
+
+- **`Modules.InMemoryPose`** — in-memory `Dictionary`-backed implementation of `IPose`. References: `Engine.Core`, `Engine.Math`; Analyzer: `Engine.Generators`
+- **`Modules.DatabasePose`** — database-backed implementation of `IPose`. Also defines the `IDatabase` behaviour contract used for persistence. References: `Engine.Core`, `Engine.Math`; Analyzer: `Engine.Generators`
+- **`Modules.InMemoryParent`** — in-memory `Dictionary`-backed implementation of `IParent`. References: `Engine.Core`, `Engine.Hierarchy`; Analyzer: `Engine.Generators`
+
 ## Component Model
 
 ### Defining a Component
@@ -123,9 +135,10 @@ public interface IPose : IComponent<Pose> { }
 
 ### Implementing a Component
 
-Concrete implementations extend `ComponentBase<TContract>` and must be marked `partial`:
+Concrete implementations extend `ComponentBase<TContract>` and must be marked `partial`. Implementations live in the `modules/` directory, separate from the contract definitions:
 
 ```csharp
+// in Modules.InMemoryPose
 public partial class InMemoryPose : ComponentBase<IPose>
 {
     private readonly Dictionary<EntityId, Pose> _poses = new();
