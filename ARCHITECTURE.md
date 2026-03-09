@@ -13,6 +13,7 @@ Engine.sln
 ├── src/
 │   ├── Engine.Core/          # Shared types, contracts, extension interfaces
 │   ├── Engine.Generators/     # Roslyn incremental source generator (netstandard2.0)
+│   ├── Engine.Math/           # Math primitives and component contracts (Pose, IPose)
 │   ├── Engine.Runtime/        # Executable host — assembly scanning, NATS, dispatch
 │   └── Example/               # Example extension demonstrating the component model
 ├── Directory.Build.props      # Shared build settings (net9.0, nullable, warnings-as-errors)
@@ -37,6 +38,15 @@ The source-of-truth for the system's contract surface. Contains:
 - **`IExtensionRegistrar`** — provided by the runtime to extensions during registration. Extensions call `AddComponent<T>()`, `AddBehaviour<TContract, TImpl>()`, and `AddPlugin<T>()` to declare their types.
 
 Engine.Core has **no dependency** on NATS, MessagePack, or any infrastructure concern. It is a pure contract/types library.
+
+### Engine.Math
+
+Math primitives and component contracts that build on Engine.Core. Contains:
+
+- **`Pose`** — a value type holding a `Vector3 Position` and `Quaternion Rotation`.
+- **`IPose`** — component contract interface extending `IComponent<Pose>`.
+
+References: `Engine.Core`
 
 ### Engine.Generators
 
@@ -96,6 +106,7 @@ References: `Engine.Core`; Analyzer: `Engine.Generators`; Packages: `NATS.Net`, 
 A component is defined by a **contract interface** that extends `IComponent<TData>`, where `TData` is the data type the component stores per entity:
 
 ```csharp
+// in Engine.Math
 public struct Pose { public Vector3 Position; public Quaternion Rotation; }
 public interface IPose : IComponent<Pose> { }
 ```

@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
+    <ProjectReference Include="..\Engine.Math\Engine.Math.csproj" />
     <ProjectReference
       Include="..\Engine.Generators\Engine.Generators.csproj"
       OutputItemType="Analyzer"

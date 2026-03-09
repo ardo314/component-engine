@@ -1,15 +1,8 @@
 ﻿using System.Numerics;
 using Engine.Core;
+using Engine.Math;
 
 namespace Example;
-
-public struct Pose
-{
-    public Vector3 Position { get; init; }
-    public Quaternion Rotation { get; init; }
-}
-
-public interface IPose : IComponent<Pose> { }
 
 public partial class InMemoryPose : ComponentBase<IPose>
 {
