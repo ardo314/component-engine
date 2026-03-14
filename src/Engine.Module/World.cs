@@ -4,7 +4,7 @@ using NATS.Client.Core;
 namespace Engine.Module;
 
 /// <summary>
-/// Client-side proxy to the backend WorldService.
+/// Client-side proxy to the backend EntityService.
 /// All operations are forwarded over NATS request-reply.
 /// </summary>
 public sealed class World
@@ -22,7 +22,7 @@ public sealed class World
     public async Task<Entity> CreateEntityAsync(CancellationToken ct = default)
     {
         var reply = await _nats.RequestAsync<byte[], string>(
-            "world.create",
+            "entity.create",
             Array.Empty<byte>(),
             cancellationToken: ct
         );
@@ -37,7 +37,7 @@ public sealed class World
     public async Task DestroyEntityAsync(EntityId id, CancellationToken ct = default)
     {
         var reply = await _nats.RequestAsync<string, string>(
-            "world.destroy",
+            "entity.destroy",
             id.Value.ToString(),
             cancellationToken: ct
         );
@@ -52,7 +52,7 @@ public sealed class World
     public async Task<bool> EntityExistsAsync(EntityId id, CancellationToken ct = default)
     {
         var reply = await _nats.RequestAsync<string, string>(
-            "world.exists",
+            "entity.exists",
             id.Value.ToString(),
             cancellationToken: ct
         );
@@ -66,7 +66,7 @@ public sealed class World
     public async Task<IReadOnlyList<EntityId>> ListEntitiesAsync(CancellationToken ct = default)
     {
         var reply = await _nats.RequestAsync<byte[], string>(
-            "world.list",
+            "entity.list",
             Array.Empty<byte>(),
             cancellationToken: ct
         );

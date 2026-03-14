@@ -11,10 +11,9 @@ Console.CancelKeyPress += (_, e) =>
 await using var nats = new NatsConnection();
 await nats.ConnectAsync();
 
-await using var world = new WorldService(nats, cts.Token);
-await world.StartAsync();
+var repo = new EntityRepository();
 
-await using var entity = new EntityService(nats, world, cts.Token);
+await using var entity = new EntityService(nats, repo, cts.Token);
 await entity.StartAsync();
 
 Console.WriteLine("Engine.Backend running – press Ctrl+C to stop.");

@@ -56,6 +56,15 @@ Engine.sln
 
 An entity is a lightweight identity represented by `EntityId` (a `readonly record struct` wrapping a `Guid`). The `Entity` class in Engine.Module associates an `EntityId` with methods to add, remove, query, and retrieve behaviours.
 
+### EntityRepository
+
+`EntityRepository` (Engine.Backend) is the central in-memory store for entity existence and per-entity behaviour sets. Used by `EntityService`, providing a single source of truth for:
+
+- Entity lifecycle — `Create`, `Destroy`, `Exists`, `ListAll`.
+- Behaviour tracking — `AddBehaviour`, `RemoveBehaviour`, `HasBehaviour`, `ListBehaviours`.
+
+All operations are thread-safe via `ConcurrentDictionary`.
+
 ### Behaviour
 
 A **behaviour** is a data contract defined as an interface in Engine.Core.
@@ -78,12 +87,12 @@ Concrete workers (e.g., `InMemoryPoseWorker`, `InMemoryParentWorker`) extend thi
 
 ### World
 
-`World` (Engine.Module) is the client-side proxy to the backend `WorldService`. It accepts an `INatsConnection` and forwards entity lifecycle operations over NATS request-reply:
+`World` (Engine.Module) is the client-side proxy to the backend `EntityService`. It accepts an `INatsConnection` and forwards entity lifecycle operations over NATS request-reply:
 
-- `CreateEntityAsync` → `world.create` — returns a local `Entity` handle.
-- `DestroyEntityAsync` → `world.destroy` — removes an entity from the backend.
-- `EntityExistsAsync` → `world.exists` — checks if an entity exists.
-- `ListEntitiesAsync` → `world.list` — returns all known entity IDs.
+- `CreateEntityAsync` → `entity.create` — returns a local `Entity` handle.
+- `DestroyEntityAsync` → `entity.destroy` — removes an entity from the backend.
+- `EntityExistsAsync` → `entity.exists` — checks if an entity exists.
+- `ListEntitiesAsync` → `entity.list` — returns all known entity IDs.
 
 ## Project Dependency Graph
 
@@ -114,7 +123,7 @@ Modules.InMemoryParent ──references──▶ Engine.Core, Engine.Module, Eng
 
 Two executable projects exist:
 
-1. **Engine.Backend** — the central server process. Hosts the `WorldService` (entity lifecycles) and `EntityService` (behaviour tracking) over NATS.
+1. **Engine.Backend** — the central server process. Hosts the `EntityService` (entity lifecycles and behaviour tracking) over NATS.
 2. **Engine.ModuleRuntime** — the module host process. Sets up a `CancellationTokenSource` tied to `Ctrl+C` and will load and run module workers, subscribing to NATS subjects for behaviour operations.
 
 Modules run inside the ModuleRuntime process, not as separate executables.
@@ -123,19 +132,14 @@ Modules run inside the ModuleRuntime process, not as separate executables.
 
 All service endpoints are exposed via NATS micro-services (`NatsSvcServer`). Subjects follow the pattern `<service>.<operation>`.
 
-### WorldService (`world`)
-
-| Subject | Request | Reply | Description |
-|---|---|---|---|
-| `world.create` | empty | EntityId (Guid string) | Create a new entity |
-| `world.destroy` | EntityId (Guid string) | `"ok"` or error | Destroy an existing entity |
-| `world.exists` | EntityId (Guid string) | `"true"` / `"false"` | Check if an entity exists |
-| `world.list` | empty | comma-separated EntityIds | List all entity IDs |
-
 ### EntityService (`entity`)
 
 | Subject | Request | Reply | Description |
 |---|---|---|---|
+| `entity.create` | empty | EntityId (Guid string) | Create a new entity |
+| `entity.destroy` | EntityId (Guid string) | `"ok"` or error | Destroy an existing entity |
+| `entity.exists` | EntityId (Guid string) | `"true"` / `"false"` | Check if an entity exists |
+| `entity.list` | empty | comma-separated EntityIds | List all entity IDs |
 | `entity.add-behaviour` | `entityId:behaviourName` | `"ok"` or error | Add a behaviour to an entity |
 | `entity.remove-behaviour` | `entityId:behaviourName` | `"ok"` or error | Remove a behaviour from an entity |
 | `entity.has-behaviour` | `entityId:behaviourName` | `"true"` / `"false"` or error | Check if an entity has a behaviour |

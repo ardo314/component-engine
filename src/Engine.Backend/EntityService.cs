@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Engine.Core;
 using NATS.Client.Core;
 using NATS.Client.Services;
@@ -6,10 +5,13 @@ using NATS.Client.Services;
 namespace Engine.Backend;
 
 /// <summary>
-/// Tracks which behaviours are attached to each entity and exposes management
-/// operations as a NATS service.
+/// Manages entity lifecycles and behaviour tracking, exposed as a NATS service.
 ///
 /// NATS subjects (under the "entity" service group):
+///   entity.create           – request with empty payload, replies with the new EntityId (Guid string).
+///   entity.destroy          – request with EntityId (Guid string), replies with "ok" or an error.
+///   entity.exists           – request with EntityId (Guid string), replies with "true" / "false".
+///   entity.list             – request with empty payload, replies with comma-separated EntityId list.
 ///   entity.add-behaviour    – request "entityId:behaviourName", replies "ok" or error.
 ///   entity.remove-behaviour – request "entityId:behaviourName", replies "ok" or error.
 ///   entity.has-behaviour    – request "entityId:behaviourName", replies "true" / "false".
@@ -17,16 +19,12 @@ namespace Engine.Backend;
 /// </summary>
 public sealed class EntityService : IAsyncDisposable
 {
-    private readonly ConcurrentDictionary<
-        EntityId,
-        ConcurrentDictionary<string, byte>
-    > _behaviours = new();
-    private readonly WorldService _world;
+    private readonly EntityRepository _repo;
     private readonly NatsSvcServer _svc;
 
-    public EntityService(INatsConnection nats, WorldService world, CancellationToken ct)
+    public EntityService(INatsConnection nats, EntityRepository repo, CancellationToken ct)
     {
-        _world = world;
+        _repo = repo;
         _svc = new NatsSvcServer(nats, new NatsSvcConfig("entity", "1.0.0"), ct);
     }
 
@@ -37,6 +35,13 @@ public sealed class EntityService : IAsyncDisposable
     {
         var grp = await _svc.AddGroupAsync("entity");
 
+        // Entity lifecycle
+        await grp.AddEndpointAsync<byte[]>(name: "create", handler: HandleCreateAsync);
+        await grp.AddEndpointAsync<string>(name: "destroy", handler: HandleDestroyAsync);
+        await grp.AddEndpointAsync<string>(name: "exists", handler: HandleExistsAsync);
+        await grp.AddEndpointAsync<byte[]>(name: "list", handler: HandleListAsync);
+
+        // Behaviour management
         await grp.AddEndpointAsync<string>(name: "add-behaviour", handler: HandleAddBehaviourAsync);
         await grp.AddEndpointAsync<string>(
             name: "remove-behaviour",
@@ -49,6 +54,54 @@ public sealed class EntityService : IAsyncDisposable
         );
     }
 
+    // ── Entity lifecycle ────────────────────────────────────────────────
+
+    private async ValueTask HandleCreateAsync(NatsSvcMsg<byte[]> msg)
+    {
+        var id = _repo.Create();
+        await msg.ReplyAsync(id.Value.ToString());
+    }
+
+    private async ValueTask HandleDestroyAsync(NatsSvcMsg<string> msg)
+    {
+        if (!Guid.TryParse(msg.Data, out var guid))
+        {
+            await msg.ReplyErrorAsync(400, "Invalid EntityId format");
+            return;
+        }
+
+        var id = new EntityId(guid);
+        if (_repo.Destroy(id))
+        {
+            await msg.ReplyAsync("ok");
+        }
+        else
+        {
+            await msg.ReplyErrorAsync(404, "Entity not found");
+        }
+    }
+
+    private async ValueTask HandleExistsAsync(NatsSvcMsg<string> msg)
+    {
+        if (!Guid.TryParse(msg.Data, out var guid))
+        {
+            await msg.ReplyErrorAsync(400, "Invalid EntityId format");
+            return;
+        }
+
+        var id = new EntityId(guid);
+        var exists = _repo.Exists(id);
+        await msg.ReplyAsync(exists ? "true" : "false");
+    }
+
+    private async ValueTask HandleListAsync(NatsSvcMsg<byte[]> msg)
+    {
+        var ids = string.Join(",", _repo.ListAll().Select(e => e.Value.ToString()));
+        await msg.ReplyAsync(ids);
+    }
+
+    // ── Behaviour management ────────────────────────────────────────────
+
     private async ValueTask HandleAddBehaviourAsync(NatsSvcMsg<string> msg)
     {
         if (!TryParseRequest(msg.Data, out var entityId, out var behaviourName))
@@ -57,15 +110,13 @@ public sealed class EntityService : IAsyncDisposable
             return;
         }
 
-        if (!_world.EntityExists(entityId))
+        if (!_repo.Exists(entityId))
         {
             await msg.ReplyErrorAsync(404, "Entity not found");
             return;
         }
 
-        var set = _behaviours.GetOrAdd(entityId, _ => new ConcurrentDictionary<string, byte>());
-
-        if (!set.TryAdd(behaviourName, 0))
+        if (!_repo.AddBehaviour(entityId, behaviourName))
         {
             await msg.ReplyErrorAsync(409, "Behaviour already added");
             return;
@@ -82,13 +133,13 @@ public sealed class EntityService : IAsyncDisposable
             return;
         }
 
-        if (!_world.EntityExists(entityId))
+        if (!_repo.Exists(entityId))
         {
             await msg.ReplyErrorAsync(404, "Entity not found");
             return;
         }
 
-        if (!_behaviours.TryGetValue(entityId, out var set) || !set.TryRemove(behaviourName, out _))
+        if (!_repo.RemoveBehaviour(entityId, behaviourName))
         {
             await msg.ReplyErrorAsync(404, "Behaviour not found on entity");
             return;
@@ -105,13 +156,13 @@ public sealed class EntityService : IAsyncDisposable
             return;
         }
 
-        if (!_world.EntityExists(entityId))
+        if (!_repo.Exists(entityId))
         {
             await msg.ReplyErrorAsync(404, "Entity not found");
             return;
         }
 
-        var has = _behaviours.TryGetValue(entityId, out var set) && set.ContainsKey(behaviourName);
+        var has = _repo.HasBehaviour(entityId, behaviourName);
         await msg.ReplyAsync(has ? "true" : "false");
     }
 
@@ -125,20 +176,14 @@ public sealed class EntityService : IAsyncDisposable
 
         var entityId = new EntityId(guid);
 
-        if (!_world.EntityExists(entityId))
+        if (!_repo.Exists(entityId))
         {
             await msg.ReplyErrorAsync(404, "Entity not found");
             return;
         }
 
-        if (_behaviours.TryGetValue(entityId, out var set))
-        {
-            await msg.ReplyAsync(string.Join(",", set.Keys));
-        }
-        else
-        {
-            await msg.ReplyAsync(string.Empty);
-        }
+        var names = _repo.ListBehaviours(entityId);
+        await msg.ReplyAsync(string.Join(",", names));
     }
 
     private static bool TryParseRequest(
