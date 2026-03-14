@@ -1,5 +1,6 @@
 using System.Numerics;
 using Engine.Core;
+using Engine.Module;
 
 namespace Modules.InMemoryPose;
 

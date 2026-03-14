@@ -28,7 +28,7 @@ public sealed class World
         );
 
         var id = ParseEntityId(reply.Data, "create");
-        return new Entity(id);
+        return new Entity(id, _nats);
     }
 
     /// <summary>
