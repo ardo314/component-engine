@@ -1,8 +1,6 @@
-using System.ComponentModel;
-
 namespace Engine.Core;
 
-public interface IDataComponent<T> : IComponent
+public interface IDataBehaviour<T> : IBehaviour
 {
     Task InitDataAsync(T data, CancellationToken ct = default);
 

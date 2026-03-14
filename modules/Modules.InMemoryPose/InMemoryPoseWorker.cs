@@ -1,10 +1,9 @@
-using System.ComponentModel;
 using System.Numerics;
 using Engine.Core;
 
 namespace Modules.InMemoryPose;
 
-public partial class InMemoryPoseWorker : ComponentWorker<IPose>
+public partial class InMemoryPoseWorker : BehaviourWorker<IPose>
 {
     public Task InitDataAsync(Pose data, CancellationToken ct = default)
     {

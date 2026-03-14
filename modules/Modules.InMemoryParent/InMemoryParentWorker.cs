@@ -1,9 +1,8 @@
-using System.ComponentModel;
 using Engine.Core;
 
 namespace Modules.InMemoryParent;
 
-public partial class InMemoryParentWorker : ComponentWorker<IParent>
+public partial class InMemoryParentWorker : BehaviourWorker<IParent>
 {
     public Task InitDataAsync(EntityId data, CancellationToken ct = default)
     {

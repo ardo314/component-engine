@@ -1,5 +1,3 @@
-using System.ComponentModel;
-
 namespace Engine.Module;
 
 using Engine.Core;
@@ -13,32 +11,32 @@ public class Entity
         Id = id;
     }
 
-    public async Task AddComponentAsync<TComponent>(
-        TComponent component,
+    public async Task AddBehaviourAsync<TBehaviour>(
+        TBehaviour behaviour,
         CancellationToken ct = default
     )
-        where TComponent : IComponent
+        where TBehaviour : IBehaviour
     {
-        // Implementation to add the component to the entity
+        // Implementation to add the behaviour to the entity
     }
 
-    public async Task RemoveComponentAsync<TComponent>(CancellationToken ct = default)
-        where TComponent : IComponent
+    public async Task RemoveBehaviourAsync<TBehaviour>(CancellationToken ct = default)
+        where TBehaviour : IBehaviour
     {
-        // Implementation to remove the component from the entity
+        // Implementation to remove the behaviour from the entity
     }
 
-    public async Task<bool> HasComponentAsync<TComponent>(CancellationToken ct = default)
-        where TComponent : IComponent
+    public async Task<bool> HasBehaviourAsync<TBehaviour>(CancellationToken ct = default)
+        where TBehaviour : IBehaviour
     {
-        // Implementation to check if the entity has the component
+        // Implementation to check if the entity has the behaviour
         return false;
     }
 
-    public async Task<TComponent> GetComponentAsync<TComponent>(CancellationToken ct = default)
-        where TComponent : IComponent
+    public async Task<TBehaviour> GetBehaviourAsync<TBehaviour>(CancellationToken ct = default)
+        where TBehaviour : IBehaviour
     {
-        // Implementation to retrieve the component from the entity
+        // Implementation to retrieve the behaviour from the entity
         return default!;
     }
 }
