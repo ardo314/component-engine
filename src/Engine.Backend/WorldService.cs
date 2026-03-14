@@ -25,6 +25,11 @@ public sealed class WorldService : IAsyncDisposable
     }
 
     /// <summary>
+    /// Returns whether the given entity exists.
+    /// </summary>
+    public bool EntityExists(EntityId id) => _entities.ContainsKey(id);
+
+    /// <summary>
     /// Registers all NATS service endpoints and begins listening for requests.
     /// </summary>
     public async Task StartAsync()

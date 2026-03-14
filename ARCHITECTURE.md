@@ -114,7 +114,7 @@ Modules.InMemoryParent ──references──▶ Engine.Core, Engine.Module, Eng
 
 Two executable projects exist:
 
-1. **Engine.Backend** — the central server process. Hosts the `WorldService` which manages entity lifecycles over NATS.
+1. **Engine.Backend** — the central server process. Hosts the `WorldService` (entity lifecycles) and `EntityService` (behaviour tracking) over NATS.
 2. **Engine.ModuleRuntime** — the module host process. Sets up a `CancellationTokenSource` tied to `Ctrl+C` and will load and run module workers, subscribing to NATS subjects for behaviour operations.
 
 Modules run inside the ModuleRuntime process, not as separate executables.
@@ -131,6 +131,15 @@ All service endpoints are exposed via NATS micro-services (`NatsSvcServer`). Sub
 | `world.destroy` | EntityId (Guid string) | `"ok"` or error | Destroy an existing entity |
 | `world.exists` | EntityId (Guid string) | `"true"` / `"false"` | Check if an entity exists |
 | `world.list` | empty | comma-separated EntityIds | List all entity IDs |
+
+### EntityService (`entity`)
+
+| Subject | Request | Reply | Description |
+|---|---|---|---|
+| `entity.add-behaviour` | `entityId:behaviourName` | `"ok"` or error | Add a behaviour to an entity |
+| `entity.remove-behaviour` | `entityId:behaviourName` | `"ok"` or error | Remove a behaviour from an entity |
+| `entity.has-behaviour` | `entityId:behaviourName` | `"true"` / `"false"` or error | Check if an entity has a behaviour |
+| `entity.list-behaviours` | EntityId (Guid string) | comma-separated behaviour names | List behaviours on an entity |
 
 Errors are returned via NATS service error replies with a numeric code and description.
 

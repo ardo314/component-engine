@@ -14,6 +14,9 @@ await nats.ConnectAsync();
 await using var world = new WorldService(nats, cts.Token);
 await world.StartAsync();
 
+await using var entity = new EntityService(nats, world, cts.Token);
+await entity.StartAsync();
+
 Console.WriteLine("Engine.Backend running – press Ctrl+C to stop.");
 
 try
