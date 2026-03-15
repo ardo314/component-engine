@@ -14,5 +14,9 @@ public interface IDataDispatch
     /// <param name="payload">MessagePack-serialized parameter data (empty if the method has no parameter).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>MessagePack-serialized return value, or empty if the method returns <see cref="Task"/>.</returns>
-    Task<ReadOnlyMemory<byte>> DispatchAsync(string methodName, ReadOnlyMemory<byte> payload, CancellationToken ct);
+    Task<ReadOnlyMemory<byte>> DispatchAsync(
+        string methodName,
+        ReadOnlyMemory<byte> payload,
+        CancellationToken ct
+    );
 }

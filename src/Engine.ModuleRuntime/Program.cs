@@ -234,10 +234,12 @@ foreach (var (behaviourName, _) in workerTypes)
                     EntityId entityId;
                     ReadOnlyMemory<byte> dispatchPayload;
 
-                    if (msg.Headers is not null &&
-                        msg.Headers.TryGetValue("EntityId", out var entityIdValues) &&
-                        entityIdValues.Count > 0 &&
-                        Guid.TryParse(entityIdValues[0], out var headerGuid))
+                    if (
+                        msg.Headers is not null
+                        && msg.Headers.TryGetValue("EntityId", out var entityIdValues)
+                        && entityIdValues.Count > 0
+                        && Guid.TryParse(entityIdValues[0], out var headerGuid)
+                    )
                     {
                         entityId = new EntityId(headerGuid);
                         dispatchPayload = msg.Data ?? ReadOnlyMemory<byte>.Empty;
@@ -247,7 +249,12 @@ foreach (var (behaviourName, _) in workerTypes)
                         // No header — payload is a UTF-8 Guid string (no-param methods).
                         var payloadBytes = msg.Data ?? Array.Empty<byte>();
                         var payloadStr = System.Text.Encoding.UTF8.GetString(payloadBytes);
-                        if (!Guid.TryParse(payloadStr.AsSpan().Trim((char)0).Trim('"'), out var payloadGuid))
+                        if (
+                            !Guid.TryParse(
+                                payloadStr.AsSpan().Trim((char)0).Trim('"'),
+                                out var payloadGuid
+                            )
+                        )
                         {
                             await msg.ReplyAsync("error: invalid EntityId format");
                             continue;
@@ -269,7 +276,11 @@ foreach (var (behaviourName, _) in workerTypes)
                         continue;
                     }
 
-                    var result = await dispatch.DispatchAsync(methodName, dispatchPayload, cts.Token);
+                    var result = await dispatch.DispatchAsync(
+                        methodName,
+                        dispatchPayload,
+                        cts.Token
+                    );
 
                     if (result.Length > 0)
                     {
@@ -284,7 +295,8 @@ foreach (var (behaviourName, _) in workerTypes)
                 {
                     Console.WriteLine($"Error dispatching behaviour method: {ex.Message}");
                     await msg.ReplyAsync(
-                        System.Text.Encoding.UTF8.GetBytes($"error: {ex.Message}"));
+                        System.Text.Encoding.UTF8.GetBytes($"error: {ex.Message}")
+                    );
                 }
             }
         },

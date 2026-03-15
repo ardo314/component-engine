@@ -18,77 +18,108 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
     {
         // ── Worker-side: find all classes that inherit BehaviourWorker<T> ──
 
-        var workerDeclarations = context.SyntaxProvider
-            .CreateSyntaxProvider(
-                predicate: static (node, _) => node is ClassDeclarationSyntax cds && cds.Modifiers.Any(SyntaxKind.PartialKeyword),
+        var workerDeclarations = context
+            .SyntaxProvider.CreateSyntaxProvider(
+                predicate: static (node, _) =>
+                    node is ClassDeclarationSyntax cds
+                    && cds.Modifiers.Any(SyntaxKind.PartialKeyword),
                 transform: static (ctx, ct) =>
                 {
-                    var symbol = ctx.SemanticModel.GetDeclaredSymbol(ctx.Node, ct) as INamedTypeSymbol;
+                    var symbol =
+                        ctx.SemanticModel.GetDeclaredSymbol(ctx.Node, ct) as INamedTypeSymbol;
                     return symbol;
-                })
+                }
+            )
             .Where(static s => s is not null)!;
 
         var workerInfos = workerDeclarations
             .Combine(context.CompilationProvider)
-            .Select((pair, ct) =>
-            {
-                var (symbol, compilation) = pair;
-                if (symbol is null) return default;
+            .Select(
+                (pair, ct) =>
+                {
+                    var (symbol, compilation) = pair;
+                    if (symbol is null)
+                        return default;
 
-                var behaviourWorkerType = compilation.GetTypeByMetadataName($"{BehaviourWorkerFqn}`1");
-                if (behaviourWorkerType is null) return default;
+                    var behaviourWorkerType = compilation.GetTypeByMetadataName(
+                        $"{BehaviourWorkerFqn}`1"
+                    );
+                    if (behaviourWorkerType is null)
+                        return default;
 
-                var behaviourInterface = GetBehaviourTypeArgument(symbol!, behaviourWorkerType);
-                if (behaviourInterface is null) return default;
+                    var behaviourInterface = GetBehaviourTypeArgument(symbol!, behaviourWorkerType);
+                    if (behaviourInterface is null)
+                        return default;
 
-                var methods = CollectBehaviourMethods(behaviourInterface, compilation);
-                if (methods.Length == 0) return default;
+                    var methods = CollectBehaviourMethods(behaviourInterface, compilation);
+                    if (methods.Length == 0)
+                        return default;
 
-                return new WorkerInfo(
-                    symbol!.ToDisplayString(),
-                    symbol.Name,
-                    symbol.ContainingNamespace.IsGlobalNamespace ? "" : symbol.ContainingNamespace.ToDisplayString(),
-                    behaviourInterface.Name,
-                    behaviourInterface.ToDisplayString(),
-                    methods);
-            })
+                    return new WorkerInfo(
+                        symbol!.ToDisplayString(),
+                        symbol.Name,
+                        symbol.ContainingNamespace.IsGlobalNamespace
+                            ? ""
+                            : symbol.ContainingNamespace.ToDisplayString(),
+                        behaviourInterface.Name,
+                        behaviourInterface.ToDisplayString(),
+                        methods
+                    );
+                }
+            )
             .Where(static w => w.WorkerName is not null);
 
-        context.RegisterSourceOutput(workerInfos, static (spc, info) =>
-        {
-            var source = GenerateWorkerPartial(info);
-            spc.AddSource($"{info.WorkerName}.g.cs", source);
-        });
+        context.RegisterSourceOutput(
+            workerInfos,
+            static (spc, info) =>
+            {
+                var source = GenerateWorkerPartial(info);
+                spc.AddSource($"{info.WorkerName}.g.cs", source);
+            }
+        );
 
         // ── Client-side: find all interfaces extending IBehaviour ──
 
-        var behaviourInterfaces = context.CompilationProvider
-            .SelectMany((compilation, ct) =>
+        var behaviourInterfaces = context.CompilationProvider.SelectMany(
+            (compilation, ct) =>
             {
                 var iBehaviour = compilation.GetTypeByMetadataName(IBehaviourFqn);
-                if (iBehaviour is null) return ImmutableArray<BehaviourInterfaceInfo>.Empty;
+                if (iBehaviour is null)
+                    return ImmutableArray<BehaviourInterfaceInfo>.Empty;
 
                 var results = ImmutableArray.CreateBuilder<BehaviourInterfaceInfo>();
                 CollectBehaviourInterfaces(compilation.GlobalNamespace, iBehaviour, results, ct);
                 return results.ToImmutable();
-            });
+            }
+        );
 
-        context.RegisterSourceOutput(behaviourInterfaces, static (spc, info) =>
-        {
-            var source = GenerateClientProxy(info);
-            spc.AddSource($"{info.ProxyName}.g.cs", source);
-        });
+        context.RegisterSourceOutput(
+            behaviourInterfaces,
+            static (spc, info) =>
+            {
+                var source = GenerateClientProxy(info);
+                spc.AddSource($"{info.ProxyName}.g.cs", source);
+            }
+        );
     }
 
     // ── Symbol helpers ──────────────────────────────────────────────────
 
-    private static INamedTypeSymbol? GetBehaviourTypeArgument(INamedTypeSymbol workerType, INamedTypeSymbol behaviourWorkerOpen)
+    private static INamedTypeSymbol? GetBehaviourTypeArgument(
+        INamedTypeSymbol workerType,
+        INamedTypeSymbol behaviourWorkerOpen
+    )
     {
         var current = workerType.BaseType;
         while (current is not null)
         {
-            if (current.IsGenericType &&
-                SymbolEqualityComparer.Default.Equals(current.OriginalDefinition, behaviourWorkerOpen))
+            if (
+                current.IsGenericType
+                && SymbolEqualityComparer.Default.Equals(
+                    current.OriginalDefinition,
+                    behaviourWorkerOpen
+                )
+            )
             {
                 return current.TypeArguments[0] as INamedTypeSymbol;
             }
@@ -97,7 +128,10 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
         return null;
     }
 
-    private static ImmutableArray<MethodInfo> CollectBehaviourMethods(INamedTypeSymbol behaviourInterface, Compilation compilation)
+    private static ImmutableArray<MethodInfo> CollectBehaviourMethods(
+        INamedTypeSymbol behaviourInterface,
+        Compilation compilation
+    )
     {
         var iBehaviour = compilation.GetTypeByMetadataName(IBehaviourFqn);
         var builder = ImmutableArray.CreateBuilder<MethodInfo>();
@@ -112,7 +146,8 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
         INamedTypeSymbol iface,
         INamedTypeSymbol? iBehaviour,
         ImmutableArray<MethodInfo>.Builder builder,
-        HashSet<string> seen)
+        HashSet<string> seen
+    )
     {
         // Skip IBehaviour itself — it's a marker with no methods.
         if (iBehaviour is not null && SymbolEqualityComparer.Default.Equals(iface, iBehaviour))
@@ -120,15 +155,19 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
 
         foreach (var member in iface.GetMembers())
         {
-            if (member is not IMethodSymbol method) continue;
-            if (method.MethodKind != MethodKind.Ordinary) continue;
+            if (member is not IMethodSymbol method)
+                continue;
+            if (method.MethodKind != MethodKind.Ordinary)
+                continue;
 
             // Deduplicate by name (handles diamond inheritance).
-            if (!seen.Add(method.Name)) continue;
+            if (!seen.Add(method.Name))
+                continue;
 
             // Determine return type info.
             var isTask = IsTask(method.ReturnType, out var returnDataType);
-            if (!isTask) continue; // Skip non-Task methods.
+            if (!isTask)
+                continue; // Skip non-Task methods.
 
             // Determine parameter info (0 or 1 value parameter + optional CancellationToken).
             string? paramType = null;
@@ -137,18 +176,18 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
             {
                 if (p.Type.ToDisplayString() == "System.Threading.CancellationToken")
                     continue;
-                if (paramType is not null) goto NextMethod; // More than 1 value param — skip.
+                if (paramType is not null)
+                    goto NextMethod; // More than 1 value param — skip.
                 paramType = p.Type.ToDisplayString();
                 paramName = p.Name;
             }
 
-            builder.Add(new MethodInfo(
-                method.Name,
-                returnDataType,
-                paramType,
-                paramName ?? "data"));
+            builder.Add(
+                new MethodInfo(method.Name, returnDataType, paramType, paramName ?? "data")
+            );
 
-            NextMethod:;
+            NextMethod:
+            ;
         }
 
         // Recurse into base interfaces.
@@ -180,38 +219,50 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
         INamespaceSymbol ns,
         INamedTypeSymbol iBehaviour,
         ImmutableArray<BehaviourInterfaceInfo>.Builder results,
-        System.Threading.CancellationToken ct)
+        System.Threading.CancellationToken ct
+    )
     {
         ct.ThrowIfCancellationRequested();
 
         foreach (var type in ns.GetTypeMembers())
         {
-            if (type.TypeKind != TypeKind.Interface) continue;
-            if (SymbolEqualityComparer.Default.Equals(type, iBehaviour)) continue;
+            if (type.TypeKind != TypeKind.Interface)
+                continue;
+            if (SymbolEqualityComparer.Default.Equals(type, iBehaviour))
+                continue;
 
             // Check if this interface extends IBehaviour (directly or transitively).
-            if (!ImplementsInterface(type, iBehaviour)) continue;
+            if (!ImplementsInterface(type, iBehaviour))
+                continue;
 
             // Skip IDataBehaviour<T> itself — it's a base convenience interface, not a concrete behaviour.
-            if (type.IsGenericType && type.Name == "IDataBehaviour") continue;
+            if (type.IsGenericType && type.Name == "IDataBehaviour")
+                continue;
 
             var methods = ImmutableArray.CreateBuilder<MethodInfo>();
             var seen = new HashSet<string>();
             CollectMethodsFromInterface(type, iBehaviour, methods, seen);
 
-            if (methods.Count == 0) continue;
+            if (methods.Count == 0)
+                continue;
 
             // Proxy name: strip leading 'I' from the interface name.
-            var proxyName = type.Name.StartsWith("I") && type.Name.Length > 1 && char.IsUpper(type.Name[1])
-                ? type.Name.Substring(1) + "Proxy"
-                : type.Name + "Proxy";
+            var proxyName =
+                type.Name.StartsWith("I") && type.Name.Length > 1 && char.IsUpper(type.Name[1])
+                    ? type.Name.Substring(1) + "Proxy"
+                    : type.Name + "Proxy";
 
-            results.Add(new BehaviourInterfaceInfo(
+            results.Add(
+                new BehaviourInterfaceInfo(
                     type.Name,
                     type.ToDisplayString(),
-                    type.ContainingNamespace.IsGlobalNamespace ? "" : type.ContainingNamespace.ToDisplayString(),
+                    type.ContainingNamespace.IsGlobalNamespace
+                        ? ""
+                        : type.ContainingNamespace.ToDisplayString(),
                     proxyName,
-                    methods.ToImmutable()));
+                    methods.ToImmutable()
+                )
+            );
         }
 
         foreach (var childNs in ns.GetNamespaceMembers())
@@ -258,7 +309,9 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
         sb.AppendLine("{");
 
         // Generate DispatchAsync method
-        sb.AppendLine("    public async Task<ReadOnlyMemory<byte>> DispatchAsync(string methodName, ReadOnlyMemory<byte> payload, CancellationToken ct)");
+        sb.AppendLine(
+            "    public async Task<ReadOnlyMemory<byte>> DispatchAsync(string methodName, ReadOnlyMemory<byte> payload, CancellationToken ct)"
+        );
         sb.AppendLine("    {");
         sb.AppendLine("        switch (methodName)");
         sb.AppendLine("        {");
@@ -273,21 +326,27 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
                 // Method returns Task<T> — call and serialize result.
                 if (method.ParamType is not null)
                 {
-                    sb.AppendLine($"                var param = MessagePackSerializer.Deserialize<{method.ParamType}>(payload, cancellationToken: ct);");
+                    sb.AppendLine(
+                        $"                var param = MessagePackSerializer.Deserialize<{method.ParamType}>(payload, cancellationToken: ct);"
+                    );
                     sb.AppendLine($"                var result = await {method.Name}(param, ct);");
                 }
                 else
                 {
                     sb.AppendLine($"                var result = await {method.Name}(ct);");
                 }
-                sb.AppendLine($"                return MessagePackSerializer.Serialize(result, cancellationToken: ct);");
+                sb.AppendLine(
+                    $"                return MessagePackSerializer.Serialize(result, cancellationToken: ct);"
+                );
             }
             else
             {
                 // Method returns Task — call and return empty.
                 if (method.ParamType is not null)
                 {
-                    sb.AppendLine($"                var param = MessagePackSerializer.Deserialize<{method.ParamType}>(payload, cancellationToken: ct);");
+                    sb.AppendLine(
+                        $"                var param = MessagePackSerializer.Deserialize<{method.ParamType}>(payload, cancellationToken: ct);"
+                    );
                     sb.AppendLine($"                await {method.Name}(param, ct);");
                 }
                 else
@@ -301,7 +360,9 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine("            default:");
-        sb.AppendLine($"                throw new NotSupportedException($\"Unknown method '{{methodName}}' on behaviour '{info.BehaviourName}'.\");");
+        sb.AppendLine(
+            $"                throw new NotSupportedException($\"Unknown method '{{methodName}}' on behaviour '{info.BehaviourName}'.\");"
+        );
         sb.AppendLine("        }");
         sb.AppendLine("    }");
 
@@ -356,20 +417,36 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
                 // Task<T> method
                 if (method.ParamType is not null)
                 {
-                    sb.AppendLine($"    public async Task<{method.ReturnDataType}> {method.Name}({method.ParamType} {method.ParamName}, CancellationToken ct = default)");
+                    sb.AppendLine(
+                        $"    public async Task<{method.ReturnDataType}> {method.Name}({method.ParamType} {method.ParamName}, CancellationToken ct = default)"
+                    );
                     sb.AppendLine("    {");
-                    sb.AppendLine($"        var requestPayload = MessagePackSerializer.Serialize(({method.ParamType})({method.ParamName}), cancellationToken: ct);");
-                    sb.AppendLine($"        var headers = new NatsHeaders {{ {{ \"EntityId\", _entityId.Value.ToString() }} }};");
-                    sb.AppendLine($"        var reply = await _nats.RequestAsync<byte[], byte[]>(\"{subject}\", requestPayload, headers: headers, cancellationToken: ct);");
-                    sb.AppendLine($"        return MessagePackSerializer.Deserialize<{method.ReturnDataType}>(reply.Data, cancellationToken: ct);");
+                    sb.AppendLine(
+                        $"        var requestPayload = MessagePackSerializer.Serialize(({method.ParamType})({method.ParamName}), cancellationToken: ct);"
+                    );
+                    sb.AppendLine(
+                        $"        var headers = new NatsHeaders {{ {{ \"EntityId\", _entityId.Value.ToString() }} }};"
+                    );
+                    sb.AppendLine(
+                        $"        var reply = await _nats.RequestAsync<byte[], byte[]>(\"{subject}\", requestPayload, headers: headers, cancellationToken: ct);"
+                    );
+                    sb.AppendLine(
+                        $"        return MessagePackSerializer.Deserialize<{method.ReturnDataType}>(reply.Data, cancellationToken: ct);"
+                    );
                     sb.AppendLine("    }");
                 }
                 else
                 {
-                    sb.AppendLine($"    public async Task<{method.ReturnDataType}> {method.Name}(CancellationToken ct = default)");
+                    sb.AppendLine(
+                        $"    public async Task<{method.ReturnDataType}> {method.Name}(CancellationToken ct = default)"
+                    );
                     sb.AppendLine("    {");
-                    sb.AppendLine($"        var reply = await _nats.RequestAsync<string, byte[]>(\"{subject}\", _entityId.Value.ToString(), cancellationToken: ct);");
-                    sb.AppendLine($"        return MessagePackSerializer.Deserialize<{method.ReturnDataType}>(reply.Data, cancellationToken: ct);");
+                    sb.AppendLine(
+                        $"        var reply = await _nats.RequestAsync<string, byte[]>(\"{subject}\", _entityId.Value.ToString(), cancellationToken: ct);"
+                    );
+                    sb.AppendLine(
+                        $"        return MessagePackSerializer.Deserialize<{method.ReturnDataType}>(reply.Data, cancellationToken: ct);"
+                    );
                     sb.AppendLine("    }");
                 }
             }
@@ -378,22 +455,38 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
                 // Task method (no return value)
                 if (method.ParamType is not null)
                 {
-                    sb.AppendLine($"    public async Task {method.Name}({method.ParamType} {method.ParamName}, CancellationToken ct = default)");
+                    sb.AppendLine(
+                        $"    public async Task {method.Name}({method.ParamType} {method.ParamName}, CancellationToken ct = default)"
+                    );
                     sb.AppendLine("    {");
-                    sb.AppendLine($"        var requestPayload = MessagePackSerializer.Serialize(({method.ParamType})({method.ParamName}), cancellationToken: ct);");
-                    sb.AppendLine($"        var headers = new NatsHeaders {{ {{ \"EntityId\", _entityId.Value.ToString() }} }};");
-                    sb.AppendLine($"        var reply = await _nats.RequestAsync<byte[], string>(\"{subject}\", requestPayload, headers: headers, cancellationToken: ct);");
+                    sb.AppendLine(
+                        $"        var requestPayload = MessagePackSerializer.Serialize(({method.ParamType})({method.ParamName}), cancellationToken: ct);"
+                    );
+                    sb.AppendLine(
+                        $"        var headers = new NatsHeaders {{ {{ \"EntityId\", _entityId.Value.ToString() }} }};"
+                    );
+                    sb.AppendLine(
+                        $"        var reply = await _nats.RequestAsync<byte[], string>(\"{subject}\", requestPayload, headers: headers, cancellationToken: ct);"
+                    );
                     sb.AppendLine("        if (reply.Data is not \"ok\")");
-                    sb.AppendLine($"            throw new InvalidOperationException($\"Behaviour method '{method.Name}' failed: {{reply.Data}}\");");
+                    sb.AppendLine(
+                        $"            throw new InvalidOperationException($\"Behaviour method '{method.Name}' failed: {{reply.Data}}\");"
+                    );
                     sb.AppendLine("    }");
                 }
                 else
                 {
-                    sb.AppendLine($"    public async Task {method.Name}(CancellationToken ct = default)");
+                    sb.AppendLine(
+                        $"    public async Task {method.Name}(CancellationToken ct = default)"
+                    );
                     sb.AppendLine("    {");
-                    sb.AppendLine($"        var reply = await _nats.RequestAsync<string, string>(\"{subject}\", _entityId.Value.ToString(), cancellationToken: ct);");
+                    sb.AppendLine(
+                        $"        var reply = await _nats.RequestAsync<string, string>(\"{subject}\", _entityId.Value.ToString(), cancellationToken: ct);"
+                    );
                     sb.AppendLine("        if (reply.Data is not \"ok\")");
-                    sb.AppendLine($"            throw new InvalidOperationException($\"Behaviour method '{method.Name}' failed: {{reply.Data}}\");");
+                    sb.AppendLine(
+                        $"            throw new InvalidOperationException($\"Behaviour method '{method.Name}' failed: {{reply.Data}}\");"
+                    );
                     sb.AppendLine("    }");
                 }
             }
@@ -415,8 +508,14 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
         public string BehaviourFullName { get; }
         public ImmutableArray<MethodInfo> Methods { get; }
 
-        public WorkerInfo(string workerFullName, string workerName, string workerNamespace,
-            string behaviourName, string behaviourFullName, ImmutableArray<MethodInfo> methods)
+        public WorkerInfo(
+            string workerFullName,
+            string workerName,
+            string workerNamespace,
+            string behaviourName,
+            string behaviourFullName,
+            ImmutableArray<MethodInfo> methods
+        )
         {
             WorkerFullName = workerFullName;
             WorkerName = workerName;
@@ -435,8 +534,13 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
         public string ProxyName { get; }
         public ImmutableArray<MethodInfo> Methods { get; }
 
-        public BehaviourInterfaceInfo(string interfaceName, string interfaceFullName,
-            string interfaceNamespace, string proxyName, ImmutableArray<MethodInfo> methods)
+        public BehaviourInterfaceInfo(
+            string interfaceName,
+            string interfaceFullName,
+            string interfaceNamespace,
+            string proxyName,
+            ImmutableArray<MethodInfo> methods
+        )
         {
             InterfaceName = interfaceName;
             InterfaceFullName = interfaceFullName;

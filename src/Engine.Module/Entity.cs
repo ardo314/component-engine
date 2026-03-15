@@ -106,9 +106,10 @@ public sealed class Entity
     {
         var interfaceType = typeof(TBehaviour);
         var interfaceName = interfaceType.Name;
-        var proxyName = interfaceName.Length > 1 && interfaceName[0] == 'I' && char.IsUpper(interfaceName[1])
-            ? interfaceName.Substring(1) + "Proxy"
-            : interfaceName + "Proxy";
+        var proxyName =
+            interfaceName.Length > 1 && interfaceName[0] == 'I' && char.IsUpper(interfaceName[1])
+                ? interfaceName.Substring(1) + "Proxy"
+                : interfaceName + "Proxy";
 
         var qualifiedName = $"{interfaceType.Namespace}.{proxyName}";
 
@@ -120,8 +121,9 @@ public sealed class Entity
         }
 
         throw new InvalidOperationException(
-            $"No generated proxy type '{proxyName}' found for behaviour '{interfaceName}'. " +
-            "Ensure Engine.Generators is referenced as an analyzer in the module project.");
+            $"No generated proxy type '{proxyName}' found for behaviour '{interfaceName}'. "
+                + "Ensure Engine.Generators is referenced as an analyzer in the module project."
+        );
     }
 
     /// <summary>
