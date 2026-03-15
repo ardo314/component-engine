@@ -2,7 +2,7 @@
 
 ## Overview
 
-Resolver Engine is an **Entity-Behaviour** engine built with .NET 9 and C#. Entities are lightweight identifiers; behaviours define data contracts as interfaces; module workers provide concrete storage and logic for those contracts. Communication between the backend and module runtimes uses **NATS** as the message transport with **MessagePack** serialization. A Roslyn-based source generator is planned to reduce boilerplate in module projects.
+Resolver Engine is an **Entity-Behaviour** engine built with .NET 9 and C#. Entities are lightweight identifiers; behaviours define data contracts as interfaces; module workers provide concrete storage and logic for those contracts. Communication between the backend and module runtimes uses **NATS** as the message transport with **MessagePack** serialization. A Roslyn-based source generator (**Engine.Generators**) eliminates boilerplate by generating client-side NATS proxies and worker-side dispatch code for behaviour interfaces.
 
 ## Solution Layout
 
@@ -10,6 +10,7 @@ Resolver Engine is an **Entity-Behaviour** engine built with .NET 9 and C#. Enti
 Engine.sln
 ├── src/                         # Core libraries and executables
 │   ├── Engine.Core              # Shared contracts (interfaces, value types)
+│   ├── Engine.Generators        # Roslyn source generator (analyzer)
 │   ├── Engine.Module            # Module-side abstractions (Entity, World, BehaviourWorker)
 │   ├── Engine.ModuleRuntime     # Executable host for running modules
 │   └── Engine.Backend           # Central backend process
@@ -20,7 +21,6 @@ Engine.sln
 
 ### Planned / Referenced (not yet implemented)
 
-- **Engine.Generators** — Roslyn source generator (`OutputItemType=Analyzer`), referenced by Engine.ModuleRuntime. Will generate boilerplate for module workers.
 - **Engine.Math** — Math utilities, referenced by Modules.InMemoryPose.
 - **Engine.Hierarchy** — Hierarchy utilities, referenced by Modules.InMemoryParent.
 
@@ -39,10 +39,10 @@ Engine.sln
 
 | Package | Version | Used by |
 |---|---|---|
-| `MessagePack` | 3.1.4 | Engine.Backend, Engine.ModuleRuntime |
-| `NATS.Net` | 2.7.2 | Engine.Backend, Engine.ModuleRuntime |
-| `Microsoft.CodeAnalysis.CSharp` | 4.12.0 | Engine.Generators (planned) |
-| `Microsoft.CodeAnalysis.Analyzers` | 3.3.4 | Engine.Generators (planned) |
+| `MessagePack` | 3.1.4 | Engine.Backend, Engine.ModuleRuntime, module projects |
+| `NATS.Net` | 2.7.2 | Engine.Backend, Engine.Module, Engine.ModuleRuntime |
+| `Microsoft.CodeAnalysis.CSharp` | 4.12.0 | Engine.Generators |
+| `Microsoft.CodeAnalysis.Analyzers` | 3.3.4 | Engine.Generators |
 
 ### VS Code Tasks
 
@@ -70,11 +70,11 @@ All operations are thread-safe via `ConcurrentDictionary`.
 A **behaviour** is a data contract defined as an interface in Engine.Core.
 
 - `IBehaviour` — marker interface; all behaviours implement this.
-- `IDataBehaviour<T> : IBehaviour` — a behaviour that holds typed data with async `InitDataAsync`, `GetDataAsync`, and `SetDataAsync` methods.
+- `IDataBehaviour<T> : IBehaviour` — a convenience base for behaviours that hold typed data with async `GetDataAsync` and `SetDataAsync` methods.
 - `IPose : IDataBehaviour<Pose>` — position and rotation (`Vector3` + `Quaternion`).
 - `IParent : IDataBehaviour<EntityId>` — parent-child entity relationship.
 
-Behaviours are **interfaces only**; they carry no implementation. This allows different module workers to provide different storage backends (in-memory, database-backed, networked, etc.) for the same contract.
+Behaviours are **interfaces only**; they carry no implementation. Any interface extending `IBehaviour` can define arbitrary async methods (returning `Task` or `Task<T>`, with zero or one value parameter plus an optional `CancellationToken`). The source generator produces client-side proxies and worker-side dispatch code for all methods declared on a behaviour interface.
 
 ### BehaviourWorker
 
@@ -84,7 +84,29 @@ Behaviours are **interfaces only**; they carry no implementation. This allows di
 - `OnAddedAsync(CancellationToken)` — called when the behaviour is attached to an entity.
 - `OnRemovedAsync(CancellationToken)` — called when the behaviour is removed.
 
-Concrete workers (e.g., `InMemoryPoseWorker`, `InMemoryParentWorker`) extend this base and implement the data access methods from `IDataBehaviour<T>`. One worker instance is created per `(EntityId, behaviour)` pair.
+Concrete workers (e.g., `InMemoryPoseWorker`, `InMemoryParentWorker`) extend this base and implement the methods from their behaviour interface. One worker instance is created per `(EntityId, behaviour)` pair.
+
+### IDataDispatch
+
+`IDataDispatch` (Engine.Module) is a non-generic interface implemented by generated worker partial classes:
+
+```csharp
+public interface IDataDispatch
+{
+    Task<ReadOnlyMemory<byte>> DispatchAsync(string methodName, ReadOnlyMemory<byte> payload, CancellationToken ct);
+}
+```
+
+It provides a single entry point for the ModuleRuntime to invoke any behaviour method on a worker without reflection. The source generator emits a `switch` over method names, deserializes parameters with MessagePack, calls the worker's concrete method, and serializes the return value.
+
+### Source Generator (Engine.Generators)
+
+`BehaviourProxyGenerator` is a Roslyn `IIncrementalGenerator` (`netstandard2.0`, referenced as an analyzer) that produces two kinds of generated code:
+
+- **Worker-side partial classes** — for each `partial` class inheriting `BehaviourWorker<T>`, the generator emits a partial that adds the behaviour interface to the class declaration and implements `IDataDispatch` with a method dispatch switch.
+- **Client-side proxy classes** — for each interface extending `IBehaviour`, the generator emits a proxy class (e.g., `PoseProxy` for `IPose`) that implements the behaviour interface and forwards each method call over NATS request-reply to the ModuleRuntime.
+
+Proxy classes accept an `EntityId` and `INatsConnection` and can be obtained via `Entity.GetBehaviour<T>()`.
 
 ### World
 
@@ -100,18 +122,23 @@ Concrete workers (e.g., `InMemoryPoseWorker`, `InMemoryParentWorker`) extend thi
 ```
 Engine.Core  (no dependencies)
     ↑
+Engine.Generators  ──packages──▶ Microsoft.CodeAnalysis.CSharp
+
 Engine.Module  ──references──▶ Engine.Core
                ──packages────▶ NATS.Net
     ↑
-Engine.ModuleRuntime  ──references──▶ Engine.Core
-                      ──analyzer────▶ Engine.Generators (planned)
+Engine.ModuleRuntime  ──references──▶ Engine.Core, Engine.Module
                       ──packages────▶ NATS.Net, MessagePack
 
 Engine.Backend  ──references──▶ Engine.Core
                 ──packages────▶ NATS.Net, MessagePack
 
 Modules.InMemoryPose   ──references──▶ Engine.Core, Engine.Module, Engine.Math (planned)
+                       ──analyzer────▶ Engine.Generators
+                       ──packages────▶ MessagePack
 Modules.InMemoryParent ──references──▶ Engine.Core, Engine.Module, Engine.Hierarchy (planned)
+                       ──analyzer────▶ Engine.Generators
+                       ──packages────▶ MessagePack
 ```
 
 ## Transport & Serialization
@@ -125,7 +152,7 @@ Modules.InMemoryParent ──references──▶ Engine.Core, Engine.Module, Eng
 Two executable projects exist:
 
 1. **Engine.Backend** — the central server process. Hosts the `EntityService` (entity lifecycles and behaviour tracking) over NATS. Acts as a two-phase orchestrator: when a behaviour is added or removed, the backend first sends a NATS request to the module runtime and only commits the change to the entity registry if the runtime responds successfully.
-2. **Engine.ModuleRuntime** — the module host process. Connects to NATS, discovers module DLLs, builds a type registry of `BehaviourWorker<T>` types, and subscribes to `worker.create.<name>` and `worker.remove.<name>` subjects to create/destroy worker instances on demand.
+2. **Engine.ModuleRuntime** — the module host process. Connects to NATS, discovers module DLLs, builds a type registry of `BehaviourWorker<T>` types, and subscribes to `worker.create.<name>` and `worker.remove.<name>` subjects to create/destroy worker instances on demand. Additionally subscribes to `behaviour.<name>.*` subjects to dispatch behaviour method calls to live workers via their `IDataDispatch` implementation.
 
 ### Behaviour Add Flow
 
@@ -174,11 +201,24 @@ All service endpoints are exposed via NATS micro-services (`NatsSvcServer`). Sub
 | `worker.create.<behaviourName>` | EntityId (Guid string) | `"ok"` or error | Create a worker instance for the given entity and behaviour |
 | `worker.remove.<behaviourName>` | EntityId (Guid string) | `"ok"` or error | Remove the worker instance for the given entity and behaviour |
 
+### Behaviour Method Dispatch (`behaviour`)
+
+| Subject | Request | Reply | Description |
+|---|---|---|---|
+| `behaviour.<behaviourName>.<methodName>` | EntityId (Guid string) or MessagePack parameter (with EntityId in `EntityId` header) | MessagePack result or `"ok"` | Invoke a behaviour method on the worker for the given entity |
+
+When a method has no value parameter, the `EntityId` is sent as a Guid string in the request payload. When a method has one value parameter, the parameter is serialized as MessagePack in the payload and the `EntityId` is sent in a NATS header named `EntityId`.
+
+Examples: `behaviour.IPose.GetDataAsync`, `behaviour.IPose.SetDataAsync`, `behaviour.IParent.GetDataAsync`.
+
 Errors are returned via NATS service error replies with a numeric code and description, or as plain string error messages from the module runtime.
 
 ## Conventions
 
 - All behaviour interfaces live in **Engine.Core** so they can be shared between backend and module code without circular dependencies.
 - Module projects live under the `modules/` folder and reference Engine.Core + Engine.Module.
-- Module worker classes are `partial` to support future source generation.
+- Module worker classes are `partial` to support source generation.
 - Async-first API: all behaviour and entity operations return `Task` and accept `CancellationToken`.
+- Behaviour method constraints: must return `Task` or `Task<T>`, accept 0 or 1 value parameter plus optional `CancellationToken`.
+- Generated proxy naming convention: interface name with leading `I` stripped plus `Proxy` suffix (e.g., `IPose` → `PoseProxy`).
+- `Entity.GetBehaviour<T>()` resolves proxy types by naming convention at runtime.

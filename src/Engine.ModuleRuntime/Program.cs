@@ -1,6 +1,7 @@
 using System.Reflection;
 using Engine.Core;
 using Engine.Module;
+using MessagePack;
 using NATS.Client.Core;
 
 var cts = new CancellationTokenSource();
@@ -193,6 +194,97 @@ foreach (var (behaviourName, workerType) in workerTypes)
                 {
                     Console.WriteLine($"Error removing worker: {ex.Message}");
                     await msg.ReplyAsync($"error: {ex.Message}");
+                }
+            }
+        },
+        cts.Token
+    );
+}
+
+// ── Subscribe to behaviour method dispatch subjects ─────────────────────
+
+foreach (var (behaviourName, _) in workerTypes)
+{
+    // Subscribe to behaviour.<behaviourName>.> (wildcard for all methods)
+    var dispatchSub = await nats.SubscribeCoreAsync<byte[]>(
+        $"behaviour.{behaviourName}.*",
+        cancellationToken: cts.Token
+    );
+    subscriptions.Add(dispatchSub);
+
+    _ = Task.Run(
+        async () =>
+        {
+            await foreach (var msg in dispatchSub.Msgs.ReadAllAsync(cts.Token))
+            {
+                try
+                {
+                    // Extract method name from subject: behaviour.<name>.<method>
+                    var subject = msg.Subject;
+                    var lastDot = subject.LastIndexOf('.');
+                    if (lastDot < 0)
+                    {
+                        await msg.ReplyAsync("error: invalid subject format");
+                        continue;
+                    }
+                    var methodName = subject.Substring(lastDot + 1);
+
+                    // EntityId can come from a header (when payload is serialized param data)
+                    // or from the payload itself (when there is no param — payload is a Guid string).
+                    EntityId entityId;
+                    ReadOnlyMemory<byte> dispatchPayload;
+
+                    if (msg.Headers is not null &&
+                        msg.Headers.TryGetValue("EntityId", out var entityIdValues) &&
+                        entityIdValues.Count > 0 &&
+                        Guid.TryParse(entityIdValues[0], out var headerGuid))
+                    {
+                        entityId = new EntityId(headerGuid);
+                        dispatchPayload = msg.Data ?? ReadOnlyMemory<byte>.Empty;
+                    }
+                    else
+                    {
+                        // No header — payload is a UTF-8 Guid string (no-param methods).
+                        var payloadBytes = msg.Data ?? Array.Empty<byte>();
+                        var payloadStr = System.Text.Encoding.UTF8.GetString(payloadBytes);
+                        if (!Guid.TryParse(payloadStr.AsSpan().Trim((char)0).Trim('"'), out var payloadGuid))
+                        {
+                            await msg.ReplyAsync("error: invalid EntityId format");
+                            continue;
+                        }
+                        entityId = new EntityId(payloadGuid);
+                        dispatchPayload = ReadOnlyMemory<byte>.Empty;
+                    }
+
+                    var key = (entityId, behaviourName);
+                    if (!workers.TryGetValue(key, out var instance))
+                    {
+                        await msg.ReplyAsync("error: no worker found for this entity");
+                        continue;
+                    }
+
+                    if (instance is not IDataDispatch dispatch)
+                    {
+                        await msg.ReplyAsync("error: worker does not support data dispatch");
+                        continue;
+                    }
+
+                    var result = await dispatch.DispatchAsync(methodName, dispatchPayload, cts.Token);
+
+                    if (result.Length > 0)
+                    {
+                        await msg.ReplyAsync(result.ToArray());
+                    }
+                    else
+                    {
+                        await msg.ReplyAsync(System.Text.Encoding.UTF8.GetBytes("ok"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error dispatching behaviour method: {ex.Message}");
+                    await msg.ReplyAsync(
+                        System.Text.Encoding.UTF8.GetBytes($"error: {ex.Message}"));
                 }
             }
         },

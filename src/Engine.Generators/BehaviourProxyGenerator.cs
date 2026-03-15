@@ -1,0 +1,464 @@
+using System.Collections.Immutable;
+using System.Linq;
+using System.Text;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+
+namespace Engine.Generators;
+
+[Generator]
+public sealed class BehaviourProxyGenerator : IIncrementalGenerator
+{
+    // Fully qualified names we look for in the compilation.
+    private const string IBehaviourFqn = "Engine.Core.IBehaviour";
+    private const string BehaviourWorkerFqn = "Engine.Module.BehaviourWorker";
+
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+        // ── Worker-side: find all classes that inherit BehaviourWorker<T> ──
+
+        var workerDeclarations = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (node, _) => node is ClassDeclarationSyntax cds && cds.Modifiers.Any(SyntaxKind.PartialKeyword),
+                transform: static (ctx, ct) =>
+                {
+                    var symbol = ctx.SemanticModel.GetDeclaredSymbol(ctx.Node, ct) as INamedTypeSymbol;
+                    return symbol;
+                })
+            .Where(static s => s is not null)!;
+
+        var workerInfos = workerDeclarations
+            .Combine(context.CompilationProvider)
+            .Select((pair, ct) =>
+            {
+                var (symbol, compilation) = pair;
+                if (symbol is null) return default;
+
+                var behaviourWorkerType = compilation.GetTypeByMetadataName($"{BehaviourWorkerFqn}`1");
+                if (behaviourWorkerType is null) return default;
+
+                var behaviourInterface = GetBehaviourTypeArgument(symbol!, behaviourWorkerType);
+                if (behaviourInterface is null) return default;
+
+                var methods = CollectBehaviourMethods(behaviourInterface, compilation);
+                if (methods.Length == 0) return default;
+
+                return new WorkerInfo(
+                    symbol!.ToDisplayString(),
+                    symbol.Name,
+                    symbol.ContainingNamespace.IsGlobalNamespace ? "" : symbol.ContainingNamespace.ToDisplayString(),
+                    behaviourInterface.Name,
+                    behaviourInterface.ToDisplayString(),
+                    methods);
+            })
+            .Where(static w => w.WorkerName is not null);
+
+        context.RegisterSourceOutput(workerInfos, static (spc, info) =>
+        {
+            var source = GenerateWorkerPartial(info);
+            spc.AddSource($"{info.WorkerName}.g.cs", source);
+        });
+
+        // ── Client-side: find all interfaces extending IBehaviour ──
+
+        var behaviourInterfaces = context.CompilationProvider
+            .SelectMany((compilation, ct) =>
+            {
+                var iBehaviour = compilation.GetTypeByMetadataName(IBehaviourFqn);
+                if (iBehaviour is null) return ImmutableArray<BehaviourInterfaceInfo>.Empty;
+
+                var results = ImmutableArray.CreateBuilder<BehaviourInterfaceInfo>();
+                CollectBehaviourInterfaces(compilation.GlobalNamespace, iBehaviour, results, ct);
+                return results.ToImmutable();
+            });
+
+        context.RegisterSourceOutput(behaviourInterfaces, static (spc, info) =>
+        {
+            var source = GenerateClientProxy(info);
+            spc.AddSource($"{info.ProxyName}.g.cs", source);
+        });
+    }
+
+    // ── Symbol helpers ──────────────────────────────────────────────────
+
+    private static INamedTypeSymbol? GetBehaviourTypeArgument(INamedTypeSymbol workerType, INamedTypeSymbol behaviourWorkerOpen)
+    {
+        var current = workerType.BaseType;
+        while (current is not null)
+        {
+            if (current.IsGenericType &&
+                SymbolEqualityComparer.Default.Equals(current.OriginalDefinition, behaviourWorkerOpen))
+            {
+                return current.TypeArguments[0] as INamedTypeSymbol;
+            }
+            current = current.BaseType;
+        }
+        return null;
+    }
+
+    private static ImmutableArray<MethodInfo> CollectBehaviourMethods(INamedTypeSymbol behaviourInterface, Compilation compilation)
+    {
+        var iBehaviour = compilation.GetTypeByMetadataName(IBehaviourFqn);
+        var builder = ImmutableArray.CreateBuilder<MethodInfo>();
+        var seen = new HashSet<string>();
+
+        CollectMethodsFromInterface(behaviourInterface, iBehaviour, builder, seen);
+
+        return builder.ToImmutable();
+    }
+
+    private static void CollectMethodsFromInterface(
+        INamedTypeSymbol iface,
+        INamedTypeSymbol? iBehaviour,
+        ImmutableArray<MethodInfo>.Builder builder,
+        HashSet<string> seen)
+    {
+        // Skip IBehaviour itself — it's a marker with no methods.
+        if (iBehaviour is not null && SymbolEqualityComparer.Default.Equals(iface, iBehaviour))
+            return;
+
+        foreach (var member in iface.GetMembers())
+        {
+            if (member is not IMethodSymbol method) continue;
+            if (method.MethodKind != MethodKind.Ordinary) continue;
+
+            // Deduplicate by name (handles diamond inheritance).
+            if (!seen.Add(method.Name)) continue;
+
+            // Determine return type info.
+            var isTask = IsTask(method.ReturnType, out var returnDataType);
+            if (!isTask) continue; // Skip non-Task methods.
+
+            // Determine parameter info (0 or 1 value parameter + optional CancellationToken).
+            string? paramType = null;
+            string? paramName = null;
+            foreach (var p in method.Parameters)
+            {
+                if (p.Type.ToDisplayString() == "System.Threading.CancellationToken")
+                    continue;
+                if (paramType is not null) goto NextMethod; // More than 1 value param — skip.
+                paramType = p.Type.ToDisplayString();
+                paramName = p.Name;
+            }
+
+            builder.Add(new MethodInfo(
+                method.Name,
+                returnDataType,
+                paramType,
+                paramName ?? "data"));
+
+            NextMethod:;
+        }
+
+        // Recurse into base interfaces.
+        foreach (var baseIface in iface.Interfaces)
+        {
+            CollectMethodsFromInterface(baseIface, iBehaviour, builder, seen);
+        }
+    }
+
+    private static bool IsTask(ITypeSymbol type, out string? dataType)
+    {
+        dataType = null;
+
+        if (type is INamedTypeSymbol named)
+        {
+            var fullName = named.OriginalDefinition.ToDisplayString();
+            if (fullName == "System.Threading.Tasks.Task")
+                return true;
+            if (fullName == "System.Threading.Tasks.Task<TResult>")
+            {
+                dataType = named.TypeArguments[0].ToDisplayString();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void CollectBehaviourInterfaces(
+        INamespaceSymbol ns,
+        INamedTypeSymbol iBehaviour,
+        ImmutableArray<BehaviourInterfaceInfo>.Builder results,
+        System.Threading.CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        foreach (var type in ns.GetTypeMembers())
+        {
+            if (type.TypeKind != TypeKind.Interface) continue;
+            if (SymbolEqualityComparer.Default.Equals(type, iBehaviour)) continue;
+
+            // Check if this interface extends IBehaviour (directly or transitively).
+            if (!ImplementsInterface(type, iBehaviour)) continue;
+
+            // Skip IDataBehaviour<T> itself — it's a base convenience interface, not a concrete behaviour.
+            if (type.IsGenericType && type.Name == "IDataBehaviour") continue;
+
+            var methods = ImmutableArray.CreateBuilder<MethodInfo>();
+            var seen = new HashSet<string>();
+            CollectMethodsFromInterface(type, iBehaviour, methods, seen);
+
+            if (methods.Count == 0) continue;
+
+            // Proxy name: strip leading 'I' from the interface name.
+            var proxyName = type.Name.StartsWith("I") && type.Name.Length > 1 && char.IsUpper(type.Name[1])
+                ? type.Name.Substring(1) + "Proxy"
+                : type.Name + "Proxy";
+
+            results.Add(new BehaviourInterfaceInfo(
+                    type.Name,
+                    type.ToDisplayString(),
+                    type.ContainingNamespace.IsGlobalNamespace ? "" : type.ContainingNamespace.ToDisplayString(),
+                    proxyName,
+                    methods.ToImmutable()));
+        }
+
+        foreach (var childNs in ns.GetNamespaceMembers())
+        {
+            CollectBehaviourInterfaces(childNs, iBehaviour, results, ct);
+        }
+    }
+
+    private static bool ImplementsInterface(INamedTypeSymbol type, INamedTypeSymbol target)
+    {
+        foreach (var iface in type.AllInterfaces)
+        {
+            if (SymbolEqualityComparer.Default.Equals(iface, target))
+                return true;
+        }
+        // Also check direct identity
+        if (SymbolEqualityComparer.Default.Equals(type, target))
+            return true;
+        return false;
+    }
+
+    // ── Worker-side code generation ─────────────────────────────────────
+
+    private static string GenerateWorkerPartial(WorkerInfo info)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("// <auto-generated />");
+        sb.AppendLine("#nullable enable");
+        sb.AppendLine();
+        sb.AppendLine("using System;");
+        sb.AppendLine("using System.Threading;");
+        sb.AppendLine("using System.Threading.Tasks;");
+        sb.AppendLine("using Engine.Module;");
+        sb.AppendLine("using MessagePack;");
+        sb.AppendLine();
+
+        if (!string.IsNullOrEmpty(info.WorkerNamespace))
+        {
+            sb.AppendLine($"namespace {info.WorkerNamespace};");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine($"partial class {info.WorkerName} : {info.BehaviourFullName}, IDataDispatch");
+        sb.AppendLine("{");
+
+        // Generate DispatchAsync method
+        sb.AppendLine("    public async Task<ReadOnlyMemory<byte>> DispatchAsync(string methodName, ReadOnlyMemory<byte> payload, CancellationToken ct)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        switch (methodName)");
+        sb.AppendLine("        {");
+
+        foreach (var method in info.Methods)
+        {
+            sb.AppendLine($"            case \"{method.Name}\":");
+            sb.AppendLine("            {");
+
+            if (method.ReturnDataType is not null)
+            {
+                // Method returns Task<T> — call and serialize result.
+                if (method.ParamType is not null)
+                {
+                    sb.AppendLine($"                var param = MessagePackSerializer.Deserialize<{method.ParamType}>(payload, cancellationToken: ct);");
+                    sb.AppendLine($"                var result = await {method.Name}(param, ct);");
+                }
+                else
+                {
+                    sb.AppendLine($"                var result = await {method.Name}(ct);");
+                }
+                sb.AppendLine($"                return MessagePackSerializer.Serialize(result, cancellationToken: ct);");
+            }
+            else
+            {
+                // Method returns Task — call and return empty.
+                if (method.ParamType is not null)
+                {
+                    sb.AppendLine($"                var param = MessagePackSerializer.Deserialize<{method.ParamType}>(payload, cancellationToken: ct);");
+                    sb.AppendLine($"                await {method.Name}(param, ct);");
+                }
+                else
+                {
+                    sb.AppendLine($"                await {method.Name}(ct);");
+                }
+                sb.AppendLine("                return ReadOnlyMemory<byte>.Empty;");
+            }
+
+            sb.AppendLine("            }");
+        }
+
+        sb.AppendLine("            default:");
+        sb.AppendLine($"                throw new NotSupportedException($\"Unknown method '{{methodName}}' on behaviour '{info.BehaviourName}'.\");");
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+
+        sb.AppendLine("}");
+
+        return sb.ToString();
+    }
+
+    // ── Client-side code generation ─────────────────────────────────────
+
+    private static string GenerateClientProxy(BehaviourInterfaceInfo info)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("// <auto-generated />");
+        sb.AppendLine("#nullable enable");
+        sb.AppendLine();
+        sb.AppendLine("using System;");
+        sb.AppendLine("using System.Threading;");
+        sb.AppendLine("using System.Threading.Tasks;");
+        sb.AppendLine("using Engine.Core;");
+        sb.AppendLine("using NATS.Client.Core;");
+        sb.AppendLine("using MessagePack;");
+        sb.AppendLine();
+
+        var proxyNamespace = !string.IsNullOrEmpty(info.InterfaceNamespace)
+            ? info.InterfaceNamespace
+            : "Engine.Module";
+
+        sb.AppendLine($"namespace {proxyNamespace};");
+        sb.AppendLine();
+        sb.AppendLine($"/// <summary>");
+        sb.AppendLine($"/// Auto-generated NATS proxy for <see cref=\"{info.InterfaceName}\"/>.");
+        sb.AppendLine($"/// </summary>");
+        sb.AppendLine($"public sealed class {info.ProxyName} : {info.InterfaceFullName}");
+        sb.AppendLine("{");
+        sb.AppendLine("    private readonly EntityId _entityId;");
+        sb.AppendLine("    private readonly INatsConnection _nats;");
+        sb.AppendLine();
+        sb.AppendLine($"    public {info.ProxyName}(EntityId entityId, INatsConnection nats)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        _entityId = entityId;");
+        sb.AppendLine("        _nats = nats;");
+        sb.AppendLine("    }");
+
+        foreach (var method in info.Methods)
+        {
+            sb.AppendLine();
+            var subject = $"behaviour.{info.InterfaceName}.{method.Name}";
+
+            if (method.ReturnDataType is not null)
+            {
+                // Task<T> method
+                if (method.ParamType is not null)
+                {
+                    sb.AppendLine($"    public async Task<{method.ReturnDataType}> {method.Name}({method.ParamType} {method.ParamName}, CancellationToken ct = default)");
+                    sb.AppendLine("    {");
+                    sb.AppendLine($"        var requestPayload = MessagePackSerializer.Serialize(({method.ParamType})({method.ParamName}), cancellationToken: ct);");
+                    sb.AppendLine($"        var headers = new NatsHeaders {{ {{ \"EntityId\", _entityId.Value.ToString() }} }};");
+                    sb.AppendLine($"        var reply = await _nats.RequestAsync<byte[], byte[]>(\"{subject}\", requestPayload, headers: headers, cancellationToken: ct);");
+                    sb.AppendLine($"        return MessagePackSerializer.Deserialize<{method.ReturnDataType}>(reply.Data, cancellationToken: ct);");
+                    sb.AppendLine("    }");
+                }
+                else
+                {
+                    sb.AppendLine($"    public async Task<{method.ReturnDataType}> {method.Name}(CancellationToken ct = default)");
+                    sb.AppendLine("    {");
+                    sb.AppendLine($"        var reply = await _nats.RequestAsync<string, byte[]>(\"{subject}\", _entityId.Value.ToString(), cancellationToken: ct);");
+                    sb.AppendLine($"        return MessagePackSerializer.Deserialize<{method.ReturnDataType}>(reply.Data, cancellationToken: ct);");
+                    sb.AppendLine("    }");
+                }
+            }
+            else
+            {
+                // Task method (no return value)
+                if (method.ParamType is not null)
+                {
+                    sb.AppendLine($"    public async Task {method.Name}({method.ParamType} {method.ParamName}, CancellationToken ct = default)");
+                    sb.AppendLine("    {");
+                    sb.AppendLine($"        var requestPayload = MessagePackSerializer.Serialize(({method.ParamType})({method.ParamName}), cancellationToken: ct);");
+                    sb.AppendLine($"        var headers = new NatsHeaders {{ {{ \"EntityId\", _entityId.Value.ToString() }} }};");
+                    sb.AppendLine($"        var reply = await _nats.RequestAsync<byte[], string>(\"{subject}\", requestPayload, headers: headers, cancellationToken: ct);");
+                    sb.AppendLine("        if (reply.Data is not \"ok\")");
+                    sb.AppendLine($"            throw new InvalidOperationException($\"Behaviour method '{method.Name}' failed: {{reply.Data}}\");");
+                    sb.AppendLine("    }");
+                }
+                else
+                {
+                    sb.AppendLine($"    public async Task {method.Name}(CancellationToken ct = default)");
+                    sb.AppendLine("    {");
+                    sb.AppendLine($"        var reply = await _nats.RequestAsync<string, string>(\"{subject}\", _entityId.Value.ToString(), cancellationToken: ct);");
+                    sb.AppendLine("        if (reply.Data is not \"ok\")");
+                    sb.AppendLine($"            throw new InvalidOperationException($\"Behaviour method '{method.Name}' failed: {{reply.Data}}\");");
+                    sb.AppendLine("    }");
+                }
+            }
+        }
+
+        sb.AppendLine("}");
+
+        return sb.ToString();
+    }
+
+    // ── Data models ─────────────────────────────────────────────────────
+
+    private readonly struct WorkerInfo
+    {
+        public string WorkerFullName { get; }
+        public string WorkerName { get; }
+        public string WorkerNamespace { get; }
+        public string BehaviourName { get; }
+        public string BehaviourFullName { get; }
+        public ImmutableArray<MethodInfo> Methods { get; }
+
+        public WorkerInfo(string workerFullName, string workerName, string workerNamespace,
+            string behaviourName, string behaviourFullName, ImmutableArray<MethodInfo> methods)
+        {
+            WorkerFullName = workerFullName;
+            WorkerName = workerName;
+            WorkerNamespace = workerNamespace;
+            BehaviourName = behaviourName;
+            BehaviourFullName = behaviourFullName;
+            Methods = methods;
+        }
+    }
+
+    private readonly struct BehaviourInterfaceInfo
+    {
+        public string InterfaceName { get; }
+        public string InterfaceFullName { get; }
+        public string InterfaceNamespace { get; }
+        public string ProxyName { get; }
+        public ImmutableArray<MethodInfo> Methods { get; }
+
+        public BehaviourInterfaceInfo(string interfaceName, string interfaceFullName,
+            string interfaceNamespace, string proxyName, ImmutableArray<MethodInfo> methods)
+        {
+            InterfaceName = interfaceName;
+            InterfaceFullName = interfaceFullName;
+            InterfaceNamespace = interfaceNamespace;
+            ProxyName = proxyName;
+            Methods = methods;
+        }
+    }
+
+    private readonly struct MethodInfo
+    {
+        public string Name { get; }
+        public string? ReturnDataType { get; }
+        public string? ParamType { get; }
+        public string ParamName { get; }
+
+        public MethodInfo(string name, string? returnDataType, string? paramType, string paramName)
+        {
+            Name = name;
+            ReturnDataType = returnDataType;
+            ParamType = paramType;
+            ParamName = paramName;
+        }
+    }
+}
