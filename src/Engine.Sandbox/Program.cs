@@ -14,7 +14,24 @@ var world = new World(nats);
 Console.WriteLine("Connected to NATS. Ready to experiment!");
 
 // Example: create an entity
-// var entity = await world.CreateEntityAsync();
-// Console.WriteLine($"Created entity {entity.Id}");
+var entity = await world.CreateEntityAsync();
+Console.WriteLine($"Created entity {entity.Id}");
+
+await entity.AddBehaviourAsync<IParent>();
+
+var behaviours = await entity.ListBehavioursAsync();
+Console.WriteLine($"Entity {entity.Id} behaviours: {string.Join(", ", behaviours)}");
+
+var entities = await world.ListEntitiesAsync();
+Console.WriteLine($"Current entities: {string.Join(", ", entities)}");
+
+var exists = await world.EntityExistsAsync(entity.Id);
+Console.WriteLine($"Entity {entity.Id} exists: {exists}");
+
+var exists2 = await world.EntityExistsAsync(EntityId.New());
+Console.WriteLine($"Random entity exists: {exists2}");
+
+await world.DestroyEntityAsync(entity.Id);
+Console.WriteLine($"Destroyed entity {entity.Id}");
 
 Console.WriteLine("Engine.Sandbox finished.");

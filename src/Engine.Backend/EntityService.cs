@@ -77,14 +77,31 @@ public sealed class EntityService : IAsyncDisposable
         }
 
         var id = new EntityId(guid);
-        if (_repo.Destroy(id))
-        {
-            await msg.ReplyAsync("ok");
-        }
-        else
+        var behaviours = _repo.Destroy(id);
+
+        if (behaviours is null)
         {
             await msg.ReplyErrorAsync(404, "Entity not found");
+            return;
         }
+
+        // Tear down all workers that were instantiated for this entity.
+        foreach (var behaviourName in behaviours)
+        {
+            try
+            {
+                await _nats.RequestAsync<string, string>(
+                    $"worker.remove.{behaviourName}",
+                    id.Value.ToString()
+                );
+            }
+            catch (NatsNoRespondersException)
+            {
+                // Module is gone – nothing to clean up on the runtime side.
+            }
+        }
+
+        await msg.ReplyAsync("ok");
     }
 
     private async ValueTask HandleExistsAsync(NatsSvcMsg<string> msg)

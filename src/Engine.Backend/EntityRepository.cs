@@ -20,8 +20,17 @@ public sealed class EntityRepository
         return id;
     }
 
-    /// <summary>Removes an entity and all of its behaviours. Returns true if it existed.</summary>
-    public bool Destroy(EntityId id) => _entities.TryRemove(id, out _);
+    /// <summary>
+    /// Removes an entity and all of its behaviours.
+    /// Returns the list of behaviour names that were attached, or <c>null</c> if the entity did not exist.
+    /// </summary>
+    public ICollection<string>? Destroy(EntityId id)
+    {
+        if (_entities.TryRemove(id, out var set))
+            return set.Keys;
+
+        return null;
+    }
 
     /// <summary>Returns whether the entity exists.</summary>
     public bool Exists(EntityId id) => _entities.ContainsKey(id);

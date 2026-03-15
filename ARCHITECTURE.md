@@ -170,6 +170,13 @@ Two executable projects exist:
 5. On success, the backend registers the behaviour in the `EntityRepository` and replies `"ok"` to the caller.
 6. On failure (no responders, timeout, or error), the backend replies with an error and does **not** register the behaviour.
 
+### Entity Destroy Flow
+
+1. A client calls `World.DestroyEntityAsync(id)`, which sends a request to `entity.destroy`.
+2. The backend removes the entity from the `EntityRepository`, obtaining the list of behaviours that were attached.
+3. For each behaviour, the backend sends a `worker.remove.<behaviourName>` request to the module runtime, which calls `OnRemovedAsync` on the worker and removes it.
+4. The backend replies `"ok"` to the caller.
+
 ### Behaviour Remove Flow
 
 Same two-phase pattern: `entity.remove-behaviour` → `worker.remove.<behaviourName>` → `OnRemovedAsync` → remove from repository.
