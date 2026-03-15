@@ -1,7 +1,7 @@
 using Engine.Core;
 using NATS.Client.Core;
 
-namespace Engine.Module;
+namespace Engine.Client;
 
 /// <summary>
 /// Client-side proxy for a single entity.

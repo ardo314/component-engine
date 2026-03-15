@@ -389,7 +389,7 @@ public sealed class BehaviourProxyGenerator : IIncrementalGenerator
 
         var proxyNamespace = !string.IsNullOrEmpty(info.InterfaceNamespace)
             ? info.InterfaceNamespace
-            : "Engine.Module";
+            : "Engine.Client";
 
         sb.AppendLine($"namespace {proxyNamespace};");
         sb.AppendLine();

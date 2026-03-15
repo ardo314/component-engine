@@ -10,9 +10,11 @@ Resolver Engine is an **Entity-Behaviour** engine built with .NET 9 and C#. Enti
 Engine.sln
 ├── src/                         # Core libraries and executables
 │   ├── Engine.Core              # Shared contracts (interfaces, value types)
+│   ├── Engine.Client            # Client-side proxies (Entity, World)
 │   ├── Engine.Generators        # Roslyn source generator (analyzer)
-│   ├── Engine.Module            # Module-side abstractions (Entity, World, BehaviourWorker)
+│   ├── Engine.Module            # Module-side abstractions (BehaviourWorker, IDataDispatch)
 │   ├── Engine.ModuleRuntime     # Executable host for running modules
+│   ├── Engine.Sandbox           # Console app for experimentation
 │   └── Engine.Backend           # Central backend process
 └── modules/                     # Pluggable module implementations
     ├── Modules.InMemoryPose     # In-memory IPose behaviour worker
@@ -54,7 +56,7 @@ Engine.sln
 
 ### Entity
 
-An entity is a lightweight identity represented by `EntityId` (a `readonly record struct` wrapping a `Guid`). The `Entity` class in Engine.Module associates an `EntityId` with methods to add, remove, query, and retrieve behaviours.
+An entity is a lightweight identity represented by `EntityId` (a `readonly record struct` wrapping a `Guid`). The `Entity` class in Engine.Client associates an `EntityId` with methods to add, remove, query, and retrieve behaviours.
 
 ### EntityRepository
 
@@ -110,7 +112,7 @@ Proxy classes accept an `EntityId` and `INatsConnection` and can be obtained via
 
 ### World
 
-`World` (Engine.Module) is the client-side proxy to the backend `EntityService`. It accepts an `INatsConnection` and forwards entity lifecycle operations over NATS request-reply:
+`World` (Engine.Client) is the client-side proxy to the backend `EntityService`. It accepts an `INatsConnection` and forwards entity lifecycle operations over NATS request-reply:
 
 - `CreateEntityAsync` → `entity.create` — returns a local `Entity` handle.
 - `DestroyEntityAsync` → `entity.destroy` — removes an entity from the backend.
@@ -124,11 +126,16 @@ Engine.Core  (no dependencies)
     ↑
 Engine.Generators  ──packages──▶ Microsoft.CodeAnalysis.CSharp
 
-Engine.Module  ──references──▶ Engine.Core
+Engine.Client  ──references──▶ Engine.Core
                ──packages────▶ NATS.Net
+    ↑
+Engine.Module  ──references──▶ Engine.Core, Engine.Client
     ↑
 Engine.ModuleRuntime  ──references──▶ Engine.Core, Engine.Module
                       ──packages────▶ NATS.Net, MessagePack
+
+Engine.Sandbox  ──references──▶ Engine.Core, Engine.Client
+                ──packages────▶ NATS.Net
 
 Engine.Backend  ──references──▶ Engine.Core
                 ──packages────▶ NATS.Net, MessagePack
