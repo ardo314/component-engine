@@ -502,7 +502,9 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
         sb.AppendLine($"/// <summary>");
         sb.AppendLine($"/// Auto-generated NATS proxy for <see cref=\"{info.InterfaceName}\"/>.");
         sb.AppendLine($"/// </summary>");
-        sb.AppendLine($"public sealed class {info.ProxyName} : {info.InterfaceFullName}, Engine.Core.IProxy");
+        sb.AppendLine(
+            $"public sealed class {info.ProxyName} : {info.InterfaceFullName}, Engine.Core.IProxy"
+        );
         sb.AppendLine("{");
         sb.AppendLine("    private readonly EntityId _entityId;");
         sb.AppendLine("    private readonly INatsConnection _nats;");
