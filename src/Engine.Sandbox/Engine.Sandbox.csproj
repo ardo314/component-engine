@@ -8,15 +8,11 @@
     <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
     <ProjectReference Include="..\..\modules\Modules.InMemoryParent.Core\Modules.InMemoryParent.Core.csproj" />
     <ProjectReference Include="..\..\modules\Modules.InMemoryPose.Core\Modules.InMemoryPose.Core.csproj" />
-    <ProjectReference
-      Include="..\Engine.Generators\Engine.Generators.csproj"
-      OutputItemType="Analyzer"
-      ReferenceOutputAssembly="false"
-    />
+    <ProjectReference Include="..\..\modules\Modules.InMemoryParent\Modules.InMemoryParent.csproj" />
+    <ProjectReference Include="..\..\modules\Modules.InMemoryPose\Modules.InMemoryPose.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="MessagePack" />
     <PackageReference Include="NATS.Net" />
   </ItemGroup>
 </Project>

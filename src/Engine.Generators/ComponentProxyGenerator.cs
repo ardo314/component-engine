@@ -66,7 +66,14 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
                             continue;
 
                         allComponents.Add(
-                            new ComponentInfo(iface.Name, iface.ToDisplayString(), methods)
+                            new ComponentInfo(
+                                iface.Name,
+                                iface.ToDisplayString(),
+                                iface.ContainingNamespace.IsGlobalNamespace
+                                    ? ""
+                                    : iface.ContainingNamespace.ToDisplayString(),
+                                methods
+                            )
                         );
                     }
 
@@ -80,6 +87,10 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
                             ? ""
                             : symbol.ContainingNamespace.ToDisplayString(),
                         markerStruct.Name,
+                        markerStruct.ToDisplayString(),
+                        markerStruct.ContainingNamespace.IsGlobalNamespace
+                            ? ""
+                            : markerStruct.ContainingNamespace.ToDisplayString(),
                         allComponents.ToImmutable()
                     );
                 }
@@ -95,23 +106,39 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
             }
         );
 
-        // ── Client-side: find all interfaces extending IComponent ──
+        // ── Client-side: derive behaviour proxies from worker marker structs ──
+        // Only generates proxies for behaviour interfaces referenced by [Has<>]
+        // on component structs that have a local ComponentWorker<T> declaration.
 
-        var componentInterfaces = context.CompilationProvider.SelectMany(
-            (compilation, ct) =>
+        var behaviourProxyInfos = workerInfos.SelectMany(
+            (info, ct) =>
             {
-                var iBehaviour = compilation.GetTypeByMetadataName(IBehaviourFqn);
-                if (iBehaviour is null)
-                    return ImmutableArray<ComponentInterfaceInfo>.Empty;
-
                 var results = ImmutableArray.CreateBuilder<ComponentInterfaceInfo>();
-                CollectComponentInterfaces(compilation.GlobalNamespace, iBehaviour, results, ct);
+                foreach (var comp in info.Components)
+                {
+                    var proxyName =
+                        comp.ComponentName.StartsWith("I")
+                        && comp.ComponentName.Length > 1
+                        && char.IsUpper(comp.ComponentName[1])
+                            ? comp.ComponentName.Substring(1) + "Proxy"
+                            : comp.ComponentName + "Proxy";
+
+                    results.Add(
+                        new ComponentInterfaceInfo(
+                            comp.ComponentName,
+                            comp.ComponentFullName,
+                            comp.ComponentNamespace,
+                            proxyName,
+                            comp.Methods
+                        )
+                    );
+                }
                 return results.ToImmutable();
             }
         );
 
         context.RegisterSourceOutput(
-            componentInterfaces,
+            behaviourProxyInfos,
             static (spc, info) =>
             {
                 var source = GenerateClientProxy(info);
@@ -119,31 +146,47 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
             }
         );
 
-        // ── Component-side: find all structs implementing IComponent with [Has<>] ──
+        // ── Component-side: derive component proxies from worker marker structs ──
+        // Only generates proxies for component structs that have a local ComponentWorker<T>.
 
-        var componentStructInfos = context.CompilationProvider.SelectMany(
-            (compilation, ct) =>
-            {
-                var iComponent = compilation.GetTypeByMetadataName(IComponentFqn);
-                var iBehaviour = compilation.GetTypeByMetadataName(IBehaviourFqn);
-                if (iComponent is null || iBehaviour is null)
-                    return ImmutableArray<ComponentStructInfo>.Empty;
+        var componentProxyInfos = workerInfos
+            .Select(
+                (info, ct) =>
+                {
+                    var behaviours = ImmutableArray.CreateBuilder<ComponentInterfaceInfo>();
+                    foreach (var comp in info.Components)
+                    {
+                        var proxyName =
+                            comp.ComponentName.StartsWith("I")
+                            && comp.ComponentName.Length > 1
+                            && char.IsUpper(comp.ComponentName[1])
+                                ? comp.ComponentName.Substring(1) + "Proxy"
+                                : comp.ComponentName + "Proxy";
 
-                var results = ImmutableArray.CreateBuilder<ComponentStructInfo>();
-                CollectComponentStructs(
-                    compilation.GlobalNamespace,
-                    iComponent,
-                    iBehaviour,
-                    compilation,
-                    results,
-                    ct
-                );
-                return results.ToImmutable();
-            }
-        );
+                        behaviours.Add(
+                            new ComponentInterfaceInfo(
+                                comp.ComponentName,
+                                comp.ComponentFullName,
+                                comp.ComponentNamespace,
+                                proxyName,
+                                comp.Methods
+                            )
+                        );
+                    }
+
+                    return new ComponentStructInfo(
+                        info.MarkerStructName,
+                        info.MarkerStructFullName,
+                        info.MarkerStructNamespace,
+                        info.MarkerStructName + "Proxy",
+                        behaviours.ToImmutable()
+                    );
+                }
+            )
+            .Where(static info => info.StructName is not null);
 
         context.RegisterSourceOutput(
-            componentStructInfos,
+            componentProxyInfos,
             static (spc, info) =>
             {
                 var source = GenerateComponentProxy(info);
@@ -306,62 +349,6 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
         return false;
     }
 
-    private static void CollectComponentInterfaces(
-        INamespaceSymbol ns,
-        INamedTypeSymbol iBehaviour,
-        ImmutableArray<ComponentInterfaceInfo>.Builder results,
-        System.Threading.CancellationToken ct
-    )
-    {
-        ct.ThrowIfCancellationRequested();
-
-        foreach (var type in ns.GetTypeMembers())
-        {
-            if (type.TypeKind != TypeKind.Interface)
-                continue;
-            if (SymbolEqualityComparer.Default.Equals(type, iBehaviour))
-                continue;
-
-            // Check if this interface extends IBehaviour (directly or transitively).
-            if (!ImplementsInterface(type, iBehaviour))
-                continue;
-
-            // Skip IDataBehaviour<T> itself — it's a base convenience interface, not a concrete behaviour.
-            if (type.IsGenericType && type.Name == "IDataBehaviour")
-                continue;
-
-            var methods = ImmutableArray.CreateBuilder<MethodInfo>();
-            var seen = new HashSet<string>();
-            CollectMethodsFromInterface(type, iBehaviour, methods, seen);
-
-            if (methods.Count == 0)
-                continue;
-
-            // Proxy name: strip leading 'I' from the interface name.
-            var proxyName =
-                type.Name.StartsWith("I") && type.Name.Length > 1 && char.IsUpper(type.Name[1])
-                    ? type.Name.Substring(1) + "Proxy"
-                    : type.Name + "Proxy";
-
-            results.Add(
-                new ComponentInterfaceInfo(
-                    type.Name,
-                    type.ToDisplayString(),
-                    type.ContainingNamespace.IsGlobalNamespace
-                        ? ""
-                        : type.ContainingNamespace.ToDisplayString(),
-                    proxyName,
-                    methods.ToImmutable()
-                )
-            );
-        }
-
-        foreach (var childNs in ns.GetNamespaceMembers())
-        {
-            CollectComponentInterfaces(childNs, iBehaviour, results, ct);
-        }
-    }
-
     private static bool ImplementsInterface(INamedTypeSymbol type, INamedTypeSymbol target)
     {
         foreach (var iface in type.AllInterfaces)
@@ -373,87 +360,6 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
         if (SymbolEqualityComparer.Default.Equals(type, target))
             return true;
         return false;
-    }
-
-    /// <summary>
-    /// Recursively scans namespaces for structs implementing IComponent with [Has&lt;&gt;] attributes.
-    /// </summary>
-    private static void CollectComponentStructs(
-        INamespaceSymbol ns,
-        INamedTypeSymbol iComponent,
-        INamedTypeSymbol iBehaviour,
-        Compilation compilation,
-        ImmutableArray<ComponentStructInfo>.Builder results,
-        System.Threading.CancellationToken ct
-    )
-    {
-        ct.ThrowIfCancellationRequested();
-
-        foreach (var type in ns.GetTypeMembers())
-        {
-            if (type.TypeKind != TypeKind.Struct)
-                continue;
-            if (!ImplementsInterface(type, iComponent))
-                continue;
-
-            var behaviourInterfaces = GetComponentInterfaces(type, compilation);
-            if (behaviourInterfaces.Length == 0)
-                continue;
-
-            var components = ImmutableArray.CreateBuilder<ComponentInterfaceInfo>();
-            foreach (var iface in behaviourInterfaces)
-            {
-                // Skip IDataBehaviour<T> itself
-                if (iface.IsGenericType && iface.Name == "IDataBehaviour")
-                    continue;
-
-                var methods = ImmutableArray.CreateBuilder<MethodInfo>();
-                var seen = new HashSet<string>();
-                CollectMethodsFromInterface(iface, iBehaviour, methods, seen);
-
-                if (methods.Count == 0)
-                    continue;
-
-                var proxyName =
-                    iface.Name.StartsWith("I")
-                    && iface.Name.Length > 1
-                    && char.IsUpper(iface.Name[1])
-                        ? iface.Name.Substring(1) + "Proxy"
-                        : iface.Name + "Proxy";
-
-                components.Add(
-                    new ComponentInterfaceInfo(
-                        iface.Name,
-                        iface.ToDisplayString(),
-                        iface.ContainingNamespace.IsGlobalNamespace
-                            ? ""
-                            : iface.ContainingNamespace.ToDisplayString(),
-                        proxyName,
-                        methods.ToImmutable()
-                    )
-                );
-            }
-
-            if (components.Count == 0)
-                continue;
-
-            results.Add(
-                new ComponentStructInfo(
-                    type.Name,
-                    type.ToDisplayString(),
-                    type.ContainingNamespace.IsGlobalNamespace
-                        ? ""
-                        : type.ContainingNamespace.ToDisplayString(),
-                    type.Name + "Proxy",
-                    components.ToImmutable()
-                )
-            );
-        }
-
-        foreach (var childNs in ns.GetNamespaceMembers())
-        {
-            CollectComponentStructs(childNs, iComponent, iBehaviour, compilation, results, ct);
-        }
     }
 
     // ── Worker-side code generation ─────────────────────────────────────
@@ -596,7 +502,7 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
         sb.AppendLine($"/// <summary>");
         sb.AppendLine($"/// Auto-generated NATS proxy for <see cref=\"{info.InterfaceName}\"/>.");
         sb.AppendLine($"/// </summary>");
-        sb.AppendLine($"public sealed class {info.ProxyName} : {info.InterfaceFullName}");
+        sb.AppendLine($"public sealed class {info.ProxyName} : {info.InterfaceFullName}, Engine.Core.IProxy");
         sb.AppendLine("{");
         sb.AppendLine("    private readonly EntityId _entityId;");
         sb.AppendLine("    private readonly INatsConnection _nats;");
@@ -726,10 +632,10 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
         );
         sb.AppendLine($"/// </summary>");
 
-        // Implement all behaviour interfaces
+        // Implement all behaviour interfaces + IProxy
         var interfaceList = string.Join(
             ", ",
-            info.BehaviourInterfaces.Select(c => c.InterfaceFullName)
+            info.BehaviourInterfaces.Select(c => c.InterfaceFullName).Append("Engine.Core.IProxy")
         );
         sb.AppendLine($"public sealed class {info.ProxyName} : {interfaceList}");
         sb.AppendLine("{");
@@ -844,6 +750,8 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
         public string WorkerName { get; }
         public string WorkerNamespace { get; }
         public string MarkerStructName { get; }
+        public string MarkerStructFullName { get; }
+        public string MarkerStructNamespace { get; }
         public ImmutableArray<ComponentInfo> Components { get; }
 
         public WorkerInfo(
@@ -851,6 +759,8 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
             string workerName,
             string workerNamespace,
             string markerStructName,
+            string markerStructFullName,
+            string markerStructNamespace,
             ImmutableArray<ComponentInfo> components
         )
         {
@@ -858,6 +768,8 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
             WorkerName = workerName;
             WorkerNamespace = workerNamespace;
             MarkerStructName = markerStructName;
+            MarkerStructFullName = markerStructFullName;
+            MarkerStructNamespace = markerStructNamespace;
             Components = components;
         }
     }
@@ -866,16 +778,19 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
     {
         public string ComponentName { get; }
         public string ComponentFullName { get; }
+        public string ComponentNamespace { get; }
         public ImmutableArray<MethodInfo> Methods { get; }
 
         public ComponentInfo(
             string componentName,
             string componentFullName,
+            string componentNamespace,
             ImmutableArray<MethodInfo> methods
         )
         {
             ComponentName = componentName;
             ComponentFullName = componentFullName;
+            ComponentNamespace = componentNamespace;
             Methods = methods;
         }
     }

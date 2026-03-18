@@ -85,6 +85,7 @@ A **behaviour** is a data/logic contract defined as an interface in Engine.Core.
 - `IDataBehaviour<T> : IBehaviour` — a convenience base for behaviours that hold typed data with async `GetDataAsync` and `SetDataAsync` methods.
 - `IPose : IDataBehaviour<Pose>` — position and rotation (`Vector3` + `Quaternion`).
 - `IParent : IDataBehaviour<EntityId>` — parent-child entity relationship.
+- `IProxy` — marker interface implemented by all generated client-side proxies (both behaviour and component proxies).
 
 Behaviours are **interfaces only**; they carry no implementation. Any interface extending `IBehaviour` can define arbitrary async methods (returning `Task` or `Task<T>`, with zero or one value parameter plus an optional `CancellationToken`). The source generator produces client-side proxies and worker-side dispatch code for all methods declared on a behaviour interface.
 
@@ -154,15 +155,15 @@ It provides a single entry point for the ModuleRuntime to invoke any behaviour m
 
 ### Source Generator (Engine.Generators)
 
-`ComponentProxyGenerator` is a Roslyn `IIncrementalGenerator` (`netstandard2.0`, referenced as an analyzer) that produces three kinds of generated code:
+`ComponentProxyGenerator` is a Roslyn `IIncrementalGenerator` (`netstandard2.0`, referenced as an analyzer) that produces three kinds of generated code, all derived from `ComponentWorker<T>` declarations found in the current compilation:
 
 - **Worker-side partial classes** — for each `partial` class inheriting `ComponentWorker<T>`, the generator reads `[Has<>]` attributes from the component struct `T`, emits a partial that adds all behaviour interfaces to the class declaration, and implements `IDataDispatch` with a nested component/method dispatch switch. Interface casts are used in the dispatch to correctly route method calls when multiple interfaces share method names.
-- **Behaviour proxy classes** — for each interface extending `IBehaviour`, the generator emits a proxy class (e.g., `PoseProxy` for `IPose`) that implements the behaviour interface and forwards each method call over NATS request-reply to the ModuleRuntime.
-- **Component proxy classes** — for each struct implementing `IComponent` with `[Has<>]` attributes, the generator emits a proxy class named `{StructName}Proxy` (e.g., `InMemoryPoseProxy` for `InMemoryPose`) that implements **all** behaviour interfaces declared via `[Has<>]`. Methods use explicit interface implementations to handle name collisions when multiple behaviours share method signatures (e.g., `GetDataAsync` on both `IPose` and `IParent`). Each method forwards to the same `component.<interfaceName>.<methodName>` NATS subjects used by behaviour proxies.
+- **Behaviour proxy classes** — for each behaviour interface referenced by `[Has<>]` on a worker's component struct, the generator emits a proxy class (e.g., `PoseProxy` for `IPose`) that implements the behaviour interface and `IProxy`, and forwards each method call over NATS request-reply to the ModuleRuntime.
+- **Component proxy classes** — for each component struct that a worker handles, the generator emits a proxy class named `{StructName}Proxy` (e.g., `InMemoryPoseProxy` for `InMemoryPose`) that implements **all** behaviour interfaces declared via `[Has<>]` plus `IProxy`. Methods use explicit interface implementations to handle name collisions when multiple behaviours share method signatures (e.g., `GetDataAsync` on both `IPose` and `IParent`). Each method forwards to the same `component.<interfaceName>.<methodName>` NATS subjects used by behaviour proxies.
 
-Behaviour proxy classes accept an `EntityId` and `INatsConnection` and can be obtained via `Entity.GetBehaviourProxy<T>()` where `T` is a behaviour interface.
+Because all three outputs are derived from worker declarations, proxies are only generated in module projects that contain `ComponentWorker<T>` subclasses — not in consumer projects like the Sandbox. Consumer projects access the proxy types by referencing the module project.
 
-Component proxy classes accept an `EntityId` and `INatsConnection` and can be obtained via `Entity.GetComponentProxy<T>()` where `T` is a component struct. The returned `object` can be cast to any of the behaviour interfaces declared on the struct.
+All proxy classes accept an `EntityId` and `INatsConnection` in their constructor and can be obtained via `Entity.GetComponentProxy<T>()` where `T` is any generated proxy type (constrained to `class, IProxy`).
 
 ### World
 
@@ -188,7 +189,7 @@ Engine.Module  ──references──▶ Engine.Core, Engine.Client
 Engine.ModuleRuntime  ──references──▶ Engine.Core, Engine.Module
                       ──packages────▶ NATS.Net, MessagePack
 
-Engine.Sandbox  ──references──▶ Engine.Core, Engine.Client, Modules.InMemoryParent.Core
+Engine.Sandbox  ──references──▶ Engine.Core, Engine.Client, Modules.InMemoryParent.Core, Modules.InMemoryPose.Core, Modules.InMemoryParent, Modules.InMemoryPose
                 ──packages────▶ NATS.Net
 
 Engine.Backend  ──references──▶ Engine.Core
@@ -296,8 +297,7 @@ Errors are returned via NATS service error replies with a numeric code and descr
 - Module worker classes are `partial` to support source generation.
 - Async-first API: all component and entity operations return `Task` and accept `CancellationToken`.
 - Component method constraints: must return `Task` or `Task<T>`, accept 0 or 1 value parameter plus optional `CancellationToken`.
-- Generated behaviour proxy naming convention: interface name with leading `I` stripped plus `Proxy` suffix (e.g., `IPose` → `PoseProxy`).
-- Generated component proxy naming convention: struct name plus `Proxy` suffix (e.g., `InMemoryPose` → `InMemoryPoseProxy`). Component proxies implement all behaviour interfaces declared via `[Has<>]` using explicit interface implementations.
-- `Entity.GetBehaviourProxy<T>()` resolves behaviour proxy types by naming convention at runtime, where `T` is a behaviour interface (constrained to `IBehaviour`).
-- `Entity.GetComponentProxy<T>()` resolves component proxy types by naming convention at runtime, where `T` is a component struct (constrained to `struct, IComponent`). Returns `object` that can be cast to any of the struct's behaviour interfaces.
+- Generated behaviour proxy naming convention: interface name with leading `I` stripped plus `Proxy` suffix (e.g., `IPose` → `PoseProxy`). Behaviour proxies implement the behaviour interface and `IProxy`.
+- Generated component proxy naming convention: struct name plus `Proxy` suffix (e.g., `InMemoryPose` → `InMemoryPoseProxy`). Component proxies implement all behaviour interfaces declared via `[Has<>]` plus `IProxy`, using explicit interface implementations.
+- `Entity.GetComponentProxy<T>()` creates a proxy instance directly from the type `T` (constrained to `class, IProxy`). Works with both behaviour proxies and component proxies.
 - `Entity.AddComponentAsync<T>()` takes a component struct type (constrained to `struct, IComponent`); the system maps it to the correct worker via the struct name.
