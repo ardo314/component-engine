@@ -154,12 +154,15 @@ It provides a single entry point for the ModuleRuntime to invoke any behaviour m
 
 ### Source Generator (Engine.Generators)
 
-`ComponentProxyGenerator` is a Roslyn `IIncrementalGenerator` (`netstandard2.0`, referenced as an analyzer) that produces two kinds of generated code:
+`ComponentProxyGenerator` is a Roslyn `IIncrementalGenerator` (`netstandard2.0`, referenced as an analyzer) that produces three kinds of generated code:
 
 - **Worker-side partial classes** — for each `partial` class inheriting `ComponentWorker<T>`, the generator reads `[Has<>]` attributes from the component struct `T`, emits a partial that adds all behaviour interfaces to the class declaration, and implements `IDataDispatch` with a nested component/method dispatch switch. Interface casts are used in the dispatch to correctly route method calls when multiple interfaces share method names.
-- **Client-side proxy classes** — for each interface extending `IBehaviour`, the generator emits a proxy class (e.g., `PoseProxy` for `IPose`) that implements the behaviour interface and forwards each method call over NATS request-reply to the ModuleRuntime.
+- **Behaviour proxy classes** — for each interface extending `IBehaviour`, the generator emits a proxy class (e.g., `PoseProxy` for `IPose`) that implements the behaviour interface and forwards each method call over NATS request-reply to the ModuleRuntime.
+- **Component proxy classes** — for each struct implementing `IComponent` with `[Has<>]` attributes, the generator emits a proxy class named `{StructName}Proxy` (e.g., `InMemoryPoseProxy` for `InMemoryPose`) that implements **all** behaviour interfaces declared via `[Has<>]`. Methods use explicit interface implementations to handle name collisions when multiple behaviours share method signatures (e.g., `GetDataAsync` on both `IPose` and `IParent`). Each method forwards to the same `component.<interfaceName>.<methodName>` NATS subjects used by behaviour proxies.
 
-Proxy classes accept an `EntityId` and `INatsConnection` and can be obtained via `Entity.GetComponent<T>()` where `T` is a behaviour interface.
+Behaviour proxy classes accept an `EntityId` and `INatsConnection` and can be obtained via `Entity.GetBehaviourProxy<T>()` where `T` is a behaviour interface.
+
+Component proxy classes accept an `EntityId` and `INatsConnection` and can be obtained via `Entity.GetComponentProxy<T>()` where `T` is a component struct. The returned `object` can be cast to any of the behaviour interfaces declared on the struct.
 
 ### World
 
@@ -293,6 +296,8 @@ Errors are returned via NATS service error replies with a numeric code and descr
 - Module worker classes are `partial` to support source generation.
 - Async-first API: all component and entity operations return `Task` and accept `CancellationToken`.
 - Component method constraints: must return `Task` or `Task<T>`, accept 0 or 1 value parameter plus optional `CancellationToken`.
-- Generated proxy naming convention: interface name with leading `I` stripped plus `Proxy` suffix (e.g., `IPose` → `PoseProxy`).
-- `Entity.GetComponent<T>()` resolves proxy types by naming convention at runtime, where `T` is a behaviour interface (constrained to `IBehaviour`).
+- Generated behaviour proxy naming convention: interface name with leading `I` stripped plus `Proxy` suffix (e.g., `IPose` → `PoseProxy`).
+- Generated component proxy naming convention: struct name plus `Proxy` suffix (e.g., `InMemoryPose` → `InMemoryPoseProxy`). Component proxies implement all behaviour interfaces declared via `[Has<>]` using explicit interface implementations.
+- `Entity.GetBehaviourProxy<T>()` resolves behaviour proxy types by naming convention at runtime, where `T` is a behaviour interface (constrained to `IBehaviour`).
+- `Entity.GetComponentProxy<T>()` resolves component proxy types by naming convention at runtime, where `T` is a component struct (constrained to `struct, IComponent`). Returns `object` that can be cast to any of the struct's behaviour interfaces.
 - `Entity.AddComponentAsync<T>()` takes a component struct type (constrained to `struct, IComponent`); the system maps it to the correct worker via the struct name.

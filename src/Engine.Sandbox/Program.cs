@@ -19,7 +19,7 @@ var entity = await world.CreateEntityAsync();
 Console.WriteLine($"Created entity {entity.Id}");
 
 await entity.AddComponentAsync<InMemoryParent>();
-var parent = entity.GetComponent<IParent>();
+var parent = entity.GetBehaviourProxy<IParent>();
 
 var components = await entity.ListComponentsAsync();
 Console.WriteLine($"Entity {entity.Id} components: {string.Join(", ", components)}");

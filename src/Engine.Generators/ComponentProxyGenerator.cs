@@ -118,6 +118,38 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
                 spc.AddSource($"{info.ProxyName}.g.cs", source);
             }
         );
+
+        // ── Component-side: find all structs implementing IComponent with [Has<>] ──
+
+        var componentStructInfos = context.CompilationProvider.SelectMany(
+            (compilation, ct) =>
+            {
+                var iComponent = compilation.GetTypeByMetadataName(IComponentFqn);
+                var iBehaviour = compilation.GetTypeByMetadataName(IBehaviourFqn);
+                if (iComponent is null || iBehaviour is null)
+                    return ImmutableArray<ComponentStructInfo>.Empty;
+
+                var results = ImmutableArray.CreateBuilder<ComponentStructInfo>();
+                CollectComponentStructs(
+                    compilation.GlobalNamespace,
+                    iComponent,
+                    iBehaviour,
+                    compilation,
+                    results,
+                    ct
+                );
+                return results.ToImmutable();
+            }
+        );
+
+        context.RegisterSourceOutput(
+            componentStructInfos,
+            static (spc, info) =>
+            {
+                var source = GenerateComponentProxy(info);
+                spc.AddSource($"{info.ProxyName}.g.cs", source);
+            }
+        );
     }
 
     // ── Symbol helpers ──────────────────────────────────────────────────
@@ -236,7 +268,13 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
             }
 
             builder.Add(
-                new MethodInfo(method.Name, returnDataType, paramType, paramName ?? "data")
+                new MethodInfo(
+                    method.Name,
+                    returnDataType,
+                    paramType,
+                    paramName ?? "data",
+                    iface.ToDisplayString()
+                )
             );
 
             NextMethod:
@@ -335,6 +373,87 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
         if (SymbolEqualityComparer.Default.Equals(type, target))
             return true;
         return false;
+    }
+
+    /// <summary>
+    /// Recursively scans namespaces for structs implementing IComponent with [Has&lt;&gt;] attributes.
+    /// </summary>
+    private static void CollectComponentStructs(
+        INamespaceSymbol ns,
+        INamedTypeSymbol iComponent,
+        INamedTypeSymbol iBehaviour,
+        Compilation compilation,
+        ImmutableArray<ComponentStructInfo>.Builder results,
+        System.Threading.CancellationToken ct
+    )
+    {
+        ct.ThrowIfCancellationRequested();
+
+        foreach (var type in ns.GetTypeMembers())
+        {
+            if (type.TypeKind != TypeKind.Struct)
+                continue;
+            if (!ImplementsInterface(type, iComponent))
+                continue;
+
+            var behaviourInterfaces = GetComponentInterfaces(type, compilation);
+            if (behaviourInterfaces.Length == 0)
+                continue;
+
+            var components = ImmutableArray.CreateBuilder<ComponentInterfaceInfo>();
+            foreach (var iface in behaviourInterfaces)
+            {
+                // Skip IDataBehaviour<T> itself
+                if (iface.IsGenericType && iface.Name == "IDataBehaviour")
+                    continue;
+
+                var methods = ImmutableArray.CreateBuilder<MethodInfo>();
+                var seen = new HashSet<string>();
+                CollectMethodsFromInterface(iface, iBehaviour, methods, seen);
+
+                if (methods.Count == 0)
+                    continue;
+
+                var proxyName =
+                    iface.Name.StartsWith("I")
+                    && iface.Name.Length > 1
+                    && char.IsUpper(iface.Name[1])
+                        ? iface.Name.Substring(1) + "Proxy"
+                        : iface.Name + "Proxy";
+
+                components.Add(
+                    new ComponentInterfaceInfo(
+                        iface.Name,
+                        iface.ToDisplayString(),
+                        iface.ContainingNamespace.IsGlobalNamespace
+                            ? ""
+                            : iface.ContainingNamespace.ToDisplayString(),
+                        proxyName,
+                        methods.ToImmutable()
+                    )
+                );
+            }
+
+            if (components.Count == 0)
+                continue;
+
+            results.Add(
+                new ComponentStructInfo(
+                    type.Name,
+                    type.ToDisplayString(),
+                    type.ContainingNamespace.IsGlobalNamespace
+                        ? ""
+                        : type.ContainingNamespace.ToDisplayString(),
+                    type.Name + "Proxy",
+                    components.ToImmutable()
+                )
+            );
+        }
+
+        foreach (var childNs in ns.GetNamespaceMembers())
+        {
+            CollectComponentStructs(childNs, iComponent, iBehaviour, compilation, results, ct);
+        }
     }
 
     // ── Worker-side code generation ─────────────────────────────────────
@@ -578,6 +697,145 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
+    // ── Component proxy code generation ─────────────────────────────────
+
+    private static string GenerateComponentProxy(ComponentStructInfo info)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("// <auto-generated />");
+        sb.AppendLine("#nullable enable");
+        sb.AppendLine();
+        sb.AppendLine("using System;");
+        sb.AppendLine("using System.Threading;");
+        sb.AppendLine("using System.Threading.Tasks;");
+        sb.AppendLine("using Engine.Core;");
+        sb.AppendLine("using NATS.Client.Core;");
+        sb.AppendLine("using MessagePack;");
+        sb.AppendLine();
+
+        var proxyNamespace = !string.IsNullOrEmpty(info.StructNamespace)
+            ? info.StructNamespace
+            : "Engine.Client";
+
+        sb.AppendLine($"namespace {proxyNamespace};");
+        sb.AppendLine();
+        sb.AppendLine($"/// <summary>");
+        sb.AppendLine($"/// Auto-generated component proxy for <see cref=\"{info.StructName}\"/>.");
+        sb.AppendLine(
+            $"/// Aggregates all behaviour interfaces declared via [Has&lt;&gt;] attributes."
+        );
+        sb.AppendLine($"/// </summary>");
+
+        // Implement all behaviour interfaces
+        var interfaceList = string.Join(
+            ", ",
+            info.BehaviourInterfaces.Select(c => c.InterfaceFullName)
+        );
+        sb.AppendLine($"public sealed class {info.ProxyName} : {interfaceList}");
+        sb.AppendLine("{");
+        sb.AppendLine("    private readonly EntityId _entityId;");
+        sb.AppendLine("    private readonly INatsConnection _nats;");
+        sb.AppendLine();
+        sb.AppendLine($"    public {info.ProxyName}(EntityId entityId, INatsConnection nats)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        _entityId = entityId;");
+        sb.AppendLine("        _nats = nats;");
+        sb.AppendLine("    }");
+
+        // Use explicit interface implementations to handle name collisions
+        foreach (var component in info.BehaviourInterfaces)
+        {
+            foreach (var method in component.Methods)
+            {
+                sb.AppendLine();
+                var subject = $"component.{component.InterfaceName}.{method.Name}";
+
+                if (method.ReturnDataType is not null)
+                {
+                    // Task<T> method
+                    if (method.ParamType is not null)
+                    {
+                        sb.AppendLine(
+                            $"    async Task<{method.ReturnDataType}> {method.DeclaringInterfaceFullName}.{method.Name}({method.ParamType} {method.ParamName}, CancellationToken ct)"
+                        );
+                        sb.AppendLine("    {");
+                        sb.AppendLine(
+                            $"        var requestPayload = MessagePackSerializer.Serialize(({method.ParamType})({method.ParamName}), cancellationToken: ct);"
+                        );
+                        sb.AppendLine(
+                            $"        var headers = new NatsHeaders {{ {{ \"EntityId\", _entityId.Value.ToString() }} }};"
+                        );
+                        sb.AppendLine(
+                            $"        var reply = await _nats.RequestAsync<byte[], byte[]>(\"{subject}\", requestPayload, headers: headers, cancellationToken: ct);"
+                        );
+                        sb.AppendLine(
+                            $"        return MessagePackSerializer.Deserialize<{method.ReturnDataType}>(reply.Data, cancellationToken: ct);"
+                        );
+                        sb.AppendLine("    }");
+                    }
+                    else
+                    {
+                        sb.AppendLine(
+                            $"    async Task<{method.ReturnDataType}> {method.DeclaringInterfaceFullName}.{method.Name}(CancellationToken ct)"
+                        );
+                        sb.AppendLine("    {");
+                        sb.AppendLine(
+                            $"        var reply = await _nats.RequestAsync<string, byte[]>(\"{subject}\", _entityId.Value.ToString(), cancellationToken: ct);"
+                        );
+                        sb.AppendLine(
+                            $"        return MessagePackSerializer.Deserialize<{method.ReturnDataType}>(reply.Data, cancellationToken: ct);"
+                        );
+                        sb.AppendLine("    }");
+                    }
+                }
+                else
+                {
+                    // Task method (no return value)
+                    if (method.ParamType is not null)
+                    {
+                        sb.AppendLine(
+                            $"    async Task {method.DeclaringInterfaceFullName}.{method.Name}({method.ParamType} {method.ParamName}, CancellationToken ct)"
+                        );
+                        sb.AppendLine("    {");
+                        sb.AppendLine(
+                            $"        var requestPayload = MessagePackSerializer.Serialize(({method.ParamType})({method.ParamName}), cancellationToken: ct);"
+                        );
+                        sb.AppendLine(
+                            $"        var headers = new NatsHeaders {{ {{ \"EntityId\", _entityId.Value.ToString() }} }};"
+                        );
+                        sb.AppendLine(
+                            $"        var reply = await _nats.RequestAsync<byte[], string>(\"{subject}\", requestPayload, headers: headers, cancellationToken: ct);"
+                        );
+                        sb.AppendLine("        if (reply.Data is not \"ok\")");
+                        sb.AppendLine(
+                            $"            throw new InvalidOperationException($\"Component method '{method.Name}' failed: {{reply.Data}}\");"
+                        );
+                        sb.AppendLine("    }");
+                    }
+                    else
+                    {
+                        sb.AppendLine(
+                            $"    async Task {method.DeclaringInterfaceFullName}.{method.Name}(CancellationToken ct)"
+                        );
+                        sb.AppendLine("    {");
+                        sb.AppendLine(
+                            $"        var reply = await _nats.RequestAsync<string, string>(\"{subject}\", _entityId.Value.ToString(), cancellationToken: ct);"
+                        );
+                        sb.AppendLine("        if (reply.Data is not \"ok\")");
+                        sb.AppendLine(
+                            $"            throw new InvalidOperationException($\"Component method '{method.Name}' failed: {{reply.Data}}\");"
+                        );
+                        sb.AppendLine("    }");
+                    }
+                }
+            }
+        }
+
+        sb.AppendLine("}");
+
+        return sb.ToString();
+    }
+
     // ── Data models ─────────────────────────────────────────────────────
 
     private readonly struct WorkerInfo
@@ -653,12 +911,49 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
         public string? ParamType { get; }
         public string ParamName { get; }
 
-        public MethodInfo(string name, string? returnDataType, string? paramType, string paramName)
+        /// <summary>
+        /// The fully qualified name of the interface that declares this method.
+        /// Used for explicit interface implementations in component proxies.
+        /// </summary>
+        public string DeclaringInterfaceFullName { get; }
+
+        public MethodInfo(
+            string name,
+            string? returnDataType,
+            string? paramType,
+            string paramName,
+            string declaringInterfaceFullName = ""
+        )
         {
             Name = name;
             ReturnDataType = returnDataType;
             ParamType = paramType;
             ParamName = paramName;
+            DeclaringInterfaceFullName = declaringInterfaceFullName;
+        }
+    }
+
+    private readonly struct ComponentStructInfo
+    {
+        public string StructName { get; }
+        public string StructFullName { get; }
+        public string StructNamespace { get; }
+        public string ProxyName { get; }
+        public ImmutableArray<ComponentInterfaceInfo> BehaviourInterfaces { get; }
+
+        public ComponentStructInfo(
+            string structName,
+            string structFullName,
+            string structNamespace,
+            string proxyName,
+            ImmutableArray<ComponentInterfaceInfo> behaviourInterfaces
+        )
+        {
+            StructName = structName;
+            StructFullName = structFullName;
+            StructNamespace = structNamespace;
+            ProxyName = proxyName;
+            BehaviourInterfaces = behaviourInterfaces;
         }
     }
 }
