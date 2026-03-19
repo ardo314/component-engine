@@ -7,7 +7,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Engine.Core", "src\Engine.Core\Engine.Core.csproj", "{A2E404CC-EC02-4811-BAB7-64F272898BCC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Engine.ModuleRuntime", "src\Engine.ModuleRuntime\Engine.ModuleRuntime.csproj", "{8490E06F-0778-4788-B62C-CD0DCE870F7D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Engine.WorkerRuntime", "src\Engine.WorkerRuntime\Engine.WorkerRuntime.csproj", "{8490E06F-0778-4788-B62C-CD0DCE870F7D}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "modules", "modules", "{CA253913-39DE-BFD0-C9A3-4B7EC6FBDF17}"
 EndProject
@@ -17,7 +17,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InMemory.Workers", "modules
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Engine.Backend", "src\Engine.Backend\Engine.Backend.csproj", "{12C7C70B-1614-4AA9-96F6-B484C43D4E2B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Engine.Module", "src\Engine.Module\Engine.Module.csproj", "{DDB3CDF1-8E62-44C1-A5BB-3C99ABF38C78}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Engine.Worker", "src\Engine.Worker\Engine.Worker.csproj", "{DDB3CDF1-8E62-44C1-A5BB-3C99ABF38C78}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Engine.Generators", "src\Engine.Generators\Engine.Generators.csproj", "{650E70D7-9AB8-49CC-8270-C65E4453F210}"
 EndProject

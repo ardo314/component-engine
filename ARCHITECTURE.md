@@ -12,8 +12,8 @@ Engine.sln
 │   ├── Engine.Core                   # Shared value types (EntityId)
 │   ├── Engine.Client                 # Client-side proxies (Entity, World) and contracts (IComponent, IBehaviour, HasAttribute, value types)
 │   ├── Engine.Generators             # Roslyn source generator (analyzer)
-│   ├── Engine.Module                 # Module-side abstractions (ComponentWorker, IDataDispatch)
-│   ├── Engine.ModuleRuntime          # Executable host for running modules
+│   ├── Engine.Worker                 # Worker-side abstractions (ComponentWorker, IDataDispatch)
+│   ├── Engine.WorkerRuntime          # Executable host for running workers
 │   ├── Engine.Sandbox                # Console app for experimentation
 │   └── Engine.Backend                # Central backend process
 └── modules/                          # Pluggable module implementations
@@ -41,8 +41,8 @@ Engine.sln
 
 | Package | Version | Used by |
 |---|---|---|
-| `MessagePack` | 3.1.4 | Engine.Backend, Engine.ModuleRuntime, module projects |
-| `NATS.Net` | 2.7.2 | Engine.Backend, Engine.Module, Engine.ModuleRuntime |
+| `MessagePack` | 3.1.4 | Engine.Backend, Engine.WorkerRuntime, module projects |
+| `NATS.Net` | 2.7.2 | Engine.Backend, Engine.Worker, Engine.WorkerRuntime |
 | `Microsoft.CodeAnalysis.CSharp` | 4.12.0 | Engine.Generators |
 | `Microsoft.CodeAnalysis.Analyzers` | 3.3.4 | Engine.Generators |
 
@@ -132,7 +132,7 @@ public sealed class HasAttribute<T> : HasAttribute where T : IBehaviour
 
 ### ComponentWorker
 
-`ComponentWorker<T>` (Engine.Module) is the abstract base class for module workers. It is generic over a component struct `T : struct, IComponent` and provides:
+`ComponentWorker<T>` (Engine.Worker) is the abstract base class for module workers. It is generic over a component struct `T : struct, IComponent` and provides:
 
 - `EntityId` property — set by the module runtime after construction to identify which entity this worker belongs to.
 - `OnAddedAsync(CancellationToken)` — called when the component is attached to an entity.
@@ -142,7 +142,7 @@ Concrete workers (e.g., `InMemoryPoseWorker`, `InMemoryParentWorker`) extend thi
 
 ### IDataDispatch
 
-`IDataDispatch` (Engine.Module) is a non-generic interface implemented by generated worker partial classes:
+`IDataDispatch` (Engine.Worker) is a non-generic interface implemented by generated worker partial classes:
 
 ```csharp
 public interface IDataDispatch
@@ -151,14 +151,14 @@ public interface IDataDispatch
 }
 ```
 
-It provides a single entry point for the ModuleRuntime to invoke any behaviour method on a worker without reflection. The `componentName` parameter disambiguates methods when a worker handles multiple behaviour interfaces with overlapping method names. The source generator emits a nested `switch` over component name and method name, deserializes parameters with MessagePack, calls the worker's concrete method via an interface cast, and serializes the return value.
+It provides a single entry point for the WorkerRuntime to invoke any behaviour method on a worker without reflection. The `componentName` parameter disambiguates methods when a worker handles multiple behaviour interfaces with overlapping method names. The source generator emits a nested `switch` over component name and method name, deserializes parameters with MessagePack, calls the worker's concrete method via an interface cast, and serializes the return value.
 
 ### Source Generator (Engine.Generators)
 
 `ComponentProxyGenerator` is a Roslyn `IIncrementalGenerator` (`netstandard2.0`, referenced as an analyzer) that produces three kinds of generated code, all derived from `ComponentWorker<T>` declarations found in the current compilation:
 
 - **Worker-side partial classes** — for each `partial` class inheriting `ComponentWorker<T>`, the generator reads `[Has<>]` attributes from the component struct `T`, emits a partial that adds all behaviour interfaces to the class declaration, and implements `IDataDispatch` with a nested component/method dispatch switch. Interface casts are used in the dispatch to correctly route method calls when multiple interfaces share method names.
-- **Behaviour proxy classes** — for each behaviour interface referenced by `[Has<>]` on a worker's component struct, the generator emits a proxy class (e.g., `PoseProxy` for `IPose`) that implements the behaviour interface and `IProxy`, and forwards each method call over NATS request-reply to the ModuleRuntime.
+- **Behaviour proxy classes** — for each behaviour interface referenced by `[Has<>]` on a worker's component struct, the generator emits a proxy class (e.g., `PoseProxy` for `IPose`) that implements the behaviour interface and `IProxy`, and forwards each method call over NATS request-reply to the WorkerRuntime.
 - **Component proxy classes** — for each component struct that a worker handles, the generator emits a proxy class named `{StructName}Proxy` (e.g., `InMemoryPoseProxy` for `InMemoryPose`) that implements **all** behaviour interfaces declared via `[Has<>]` plus `IProxy`. Methods use explicit interface implementations to handle name collisions when multiple behaviours share method signatures (e.g., `GetDataAsync` on both `IPose` and `IParent`). Each method forwards to the same `component.<interfaceName>.<methodName>` NATS subjects used by behaviour proxies.
 
 Because all three outputs are derived from worker declarations, proxies are only generated in module projects that contain `ComponentWorker<T>` subclasses — not in consumer projects like the Sandbox. Consumer projects access the proxy types by referencing the module project.
@@ -184,9 +184,9 @@ Engine.Generators  ──packages──▶ Microsoft.CodeAnalysis.CSharp
 Engine.Client  ──references──▶ Engine.Core
                ──packages────▶ NATS.Net
     ↑
-Engine.Module  ──references──▶ Engine.Core, Engine.Client
+Engine.Worker  ──references──▶ Engine.Core, Engine.Client
     ↑
-Engine.ModuleRuntime  ──references──▶ Engine.Core, Engine.Module
+Engine.WorkerRuntime  ──references──▶ Engine.Core, Engine.Worker
                       ──packages────▶ NATS.Net, MessagePack
 
 Engine.Sandbox  ──references──▶ Engine.Core, Engine.Client, InMemory, InMemory.Workers
@@ -197,7 +197,7 @@ Engine.Backend  ──references──▶ Engine.Core
 
 InMemory         ──references──▶ Engine.Client
 
-InMemory.Workers ──references──▶ Engine.Core, Engine.Module, InMemory
+InMemory.Workers ──references──▶ Engine.Core, Engine.Worker, InMemory
                  ──analyzer────▶ Engine.Generators
                  ──packages────▶ MessagePack
 ```
@@ -206,14 +206,14 @@ InMemory.Workers ──references──▶ Engine.Core, Engine.Module, InMemory
 
 - **NATS** (`NATS.Net` package) is the messaging backbone connecting the backend to module runtimes.
 - **MessagePack** is the wire format for component data exchanged over NATS.
-- The Engine.ModuleRuntime process hosts module workers and bridges NATS messages to `ComponentWorker` lifecycle methods.
+- The Engine.WorkerRuntime process hosts module workers and bridges NATS messages to `ComponentWorker` lifecycle methods.
 
 ## Process Model
 
 Two executable projects exist:
 
 1. **Engine.Backend** — the central server process. Hosts the `EntityService` (entity lifecycles and component tracking) over NATS. Acts as a two-phase orchestrator: when a component is added or removed, the backend first sends a NATS request to the module runtime and only commits the change to the entity registry if the runtime responds successfully.
-2. **Engine.ModuleRuntime** — the module host process. Connects to NATS, discovers module DLLs, builds a type registry of `ComponentWorker<T>` types, reads `[Has<>]` attributes from their component structs, and subscribes to `worker.create.<structName>` and `worker.remove.<structName>` subjects to create/destroy worker instances on demand. Additionally subscribes to `component.<interfaceName>.*` subjects to dispatch behaviour method calls to live workers via their `IDataDispatch` implementation.
+2. **Engine.WorkerRuntime** — the module host process. Connects to NATS, discovers module DLLs, builds a type registry of `ComponentWorker<T>` types, reads `[Has<>]` attributes from their component structs, and subscribes to `worker.create.<structName>` and `worker.remove.<structName>` subjects to create/destroy worker instances on demand. Additionally subscribes to `component.<interfaceName>.*` subjects to dispatch behaviour method calls to live workers via their `IDataDispatch` implementation.
 
 ### Component Add Flow
 
@@ -237,7 +237,7 @@ Same two-phase pattern: `entity.remove-component` → `worker.remove.<structName
 
 ### Module Loading
 
-At startup the ModuleRuntime scans `{AppContext.BaseDirectory}/modules/` for `.dll` files. For each assembly it finds, it reflects over exported types and builds a **type registry** (`Dictionary<string, Type>`) mapping each component struct name (e.g. `"InMemoryPose"`) to the concrete `ComponentWorker<T>` type that handles it. It also builds a **component mapping** (`Dictionary<string, string>`) from behaviour interface name (e.g. `"IPose"`) to component struct name, by reading `[Has<>]` attributes from each component struct. No worker instances are created eagerly — they are instantiated on demand when `worker.create.<structName>` requests arrive.
+At startup the WorkerRuntime scans `{AppContext.BaseDirectory}/modules/` for `.dll` files. For each assembly it finds, it reflects over exported types and builds a **type registry** (`Dictionary<string, Type>`) mapping each component struct name (e.g. `"InMemoryPose"`) to the concrete `ComponentWorker<T>` type that handles it. It also builds a **component mapping** (`Dictionary<string, string>`) from behaviour interface name (e.g. `"IPose"`) to component struct name, by reading `[Has<>]` attributes from each component struct. No worker instances are created eagerly — they are instantiated on demand when `worker.create.<structName>` requests arrive.
 
 Workers are created via parameterless constructors (`Activator.CreateInstance`). Live instances are tracked in two dictionaries:
 - `(EntityId, structName) → worker` for lifecycle management (create/remove).
@@ -245,9 +245,9 @@ Workers are created via parameterless constructors (`Activator.CreateInstance`).
 
 When a worker handles multiple behaviour interfaces, the same instance appears in the dispatch dictionary under each interface name.
 
-To deploy a module, copy its build output (DLL + dependencies, including the core project) into the `modules/` sub-directory of the ModuleRuntime publish output.
+To deploy a module, copy its build output (DLL + dependencies, including the core project) into the `modules/` sub-directory of the WorkerRuntime publish output.
 
-Modules run inside the ModuleRuntime process, not as separate executables.
+Modules run inside the WorkerRuntime process, not as separate executables.
 
 ## NATS Subject Conventions
 
@@ -266,7 +266,7 @@ All service endpoints are exposed via NATS micro-services (`NatsSvcServer`). Sub
 | `entity.has-component` | `entityId:componentName` | `"true"` / `"false"` or error | Check if an entity has a component |
 | `entity.list-components` | EntityId (Guid string) | comma-separated component names | List components on an entity |
 
-### ModuleRuntime (worker lifecycle)
+### WorkerRuntime (worker lifecycle)
 
 | Subject | Request | Reply | Description |
 |---|---|---|---|
@@ -289,7 +289,7 @@ Errors are returned via NATS service error replies with a numeric code and descr
 
 - All behaviour interfaces and component contracts (`IComponent`, `IBehaviour`, `HasAttribute<T>`, `IProxy`, `IDataBehaviour<T>`) live in **Engine.Client** so they can be shared between client, module, and module-core code without depending on the backend. **Engine.Core** contains only `EntityId`, the minimal shared identity type needed by the backend.
 - Each module has a **core project** (e.g. `InMemory`) containing component structs with `[Has<>]` attributes and `IComponent` implementations. This project is shared between client and worker code. Multiple related component structs can live in the same core project under a shared namespace.
-- Module worker projects (e.g. `InMemory.Workers`) live under the `modules/` folder and reference Engine.Core, Engine.Module, and their core project.
+- Module worker projects (e.g. `InMemory.Workers`) live under the `modules/` folder and reference Engine.Core, Engine.Worker, and their core project.
 - Module worker classes are `partial` to support source generation.
 - Async-first API: all component and entity operations return `Task` and accept `CancellationToken`.
 - Component method constraints: must return `Task` or `Task<T>`, accept 0 or 1 value parameter plus optional `CancellationToken`.

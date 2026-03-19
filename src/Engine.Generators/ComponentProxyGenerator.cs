@@ -13,7 +13,7 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
     // Fully qualified names we look for in the compilation.
     private const string IComponentFqn = "Engine.Client.IComponent";
     private const string IBehaviourFqn = "Engine.Client.IBehaviour";
-    private const string ComponentWorkerFqn = "Engine.Module.ComponentWorker";
+    private const string ComponentWorkerFqn = "Engine.Worker.ComponentWorker";
     private const string HasAttributeFqn = "Engine.Client.HasAttribute";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -373,7 +373,7 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Threading;");
         sb.AppendLine("using System.Threading.Tasks;");
-        sb.AppendLine("using Engine.Module;");
+        sb.AppendLine("using Engine.Worker;");
         sb.AppendLine("using MessagePack;");
         sb.AppendLine();
 

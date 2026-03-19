@@ -1,7 +1,7 @@
 using System.Reflection;
 using Engine.Client;
 using Engine.Core;
-using Engine.Module;
+using Engine.Worker;
 using MessagePack;
 using NATS.Client.Core;
 
@@ -338,7 +338,7 @@ foreach (var componentName in allComponentNames)
     );
 }
 
-Console.WriteLine("Engine.ModuleRuntime running – press Ctrl+C to stop.");
+Console.WriteLine("Engine.WorkerRuntime running – press Ctrl+C to stop.");
 
 try
 {
