@@ -1,7 +1,6 @@
 using Engine.Client;
 using Engine.Core;
 using NATS.Client.Core;
-
 using InMemoryParentComponent = InMemoryParent.InMemoryParent;
 
 Console.WriteLine("Engine.Sandbox starting…");
