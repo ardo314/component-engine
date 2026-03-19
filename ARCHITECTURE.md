@@ -17,16 +17,14 @@ Engine.sln
 │   ├── Engine.Sandbox                # Console app for experimentation
 │   └── Engine.Backend                # Central backend process
 └── modules/                          # Pluggable module implementations
-    ├── InMemoryPose                  # Marker struct for InMemoryPose component
-    ├── InMemoryPose.Worker           # In-memory IPose component worker
-    ├── InMemoryParent                # Marker struct for InMemoryParent component
-    └── InMemoryParent.Worker         # In-memory IParent component worker
+    ├── InMemory                      # Component marker structs (InMemoryPose, InMemoryParent)
+    └── InMemory.Workers              # In-memory component workers (IPose, IParent)
 ```
 
 ### Planned / Referenced (not yet implemented)
 
-- **Engine.Math** — Math utilities, referenced by InMemoryPose.
-- **Engine.Hierarchy** — Hierarchy utilities, referenced by InMemoryParent.
+- **Engine.Math** — Math utilities, referenced by InMemory.
+- **Engine.Hierarchy** — Hierarchy utilities, referenced by InMemory.
 
 ## Build & Tooling
 
@@ -93,7 +91,7 @@ Behaviours are **interfaces only**; they carry no implementation. Any interface 
 
 ### Component Marker Structs and `Has<T>`
 
-Each module defines a **component struct** in a core project (e.g. `InMemoryPose`) that implements `IComponent` and declares which behaviour interfaces it provides via `[Has<T>]` attributes:
+Each module defines a **component struct** in a core project (e.g. `InMemory`) that implements `IComponent` and declares which behaviour interfaces it provides via `[Has<T>]` attributes:
 
 ```csharp
 [Has<IPose>]
@@ -191,21 +189,17 @@ Engine.Module  ──references──▶ Engine.Core, Engine.Client
 Engine.ModuleRuntime  ──references──▶ Engine.Core, Engine.Module
                       ──packages────▶ NATS.Net, MessagePack
 
-Engine.Sandbox  ──references──▶ Engine.Core, Engine.Client, InMemoryParent, InMemoryPose, InMemoryParent.Worker, InMemoryPose.Worker
+Engine.Sandbox  ──references──▶ Engine.Core, Engine.Client, InMemory, InMemory.Workers
                 ──packages────▶ NATS.Net
 
 Engine.Backend  ──references──▶ Engine.Core
                 ──packages────▶ NATS.Net, MessagePack
 
-InMemoryPose   ──references──▶ Engine.Client
-InMemoryParent ──references──▶ Engine.Client
+InMemory         ──references──▶ Engine.Client
 
-InMemoryPose.Worker   ──references──▶ Engine.Core, Engine.Module, InMemoryPose
-                      ──analyzer────▶ Engine.Generators
-                      ──packages────▶ MessagePack
-InMemoryParent.Worker ──references──▶ Engine.Core, Engine.Module, InMemoryParent
-                      ──analyzer────▶ Engine.Generators
-                      ──packages────▶ MessagePack
+InMemory.Workers ──references──▶ Engine.Core, Engine.Module, InMemory
+                 ──analyzer────▶ Engine.Generators
+                 ──packages────▶ MessagePack
 ```
 
 ## Transport & Serialization
@@ -294,8 +288,8 @@ Errors are returned via NATS service error replies with a numeric code and descr
 ## Conventions
 
 - All behaviour interfaces and component contracts (`IComponent`, `IBehaviour`, `HasAttribute<T>`, `IProxy`, `IDataBehaviour<T>`) live in **Engine.Client** so they can be shared between client, module, and module-core code without depending on the backend. **Engine.Core** contains only `EntityId`, the minimal shared identity type needed by the backend.
-- Each module has a **core project** (e.g. `InMemoryPose`) containing the component struct with `[Has<>]` attributes and `IComponent` implementation. This project is shared between client and worker code.
-- Module worker projects (e.g. `InMemoryPose.Worker`) live under the `modules/` folder and reference Engine.Core, Engine.Module, and their core project.
+- Each module has a **core project** (e.g. `InMemory`) containing component structs with `[Has<>]` attributes and `IComponent` implementations. This project is shared between client and worker code. Multiple related component structs can live in the same core project under a shared namespace.
+- Module worker projects (e.g. `InMemory.Workers`) live under the `modules/` folder and reference Engine.Core, Engine.Module, and their core project.
 - Module worker classes are `partial` to support source generation.
 - Async-first API: all component and entity operations return `Task` and accept `CancellationToken`.
 - Component method constraints: must return `Task` or `Task<T>`, accept 0 or 1 value parameter plus optional `CancellationToken`.

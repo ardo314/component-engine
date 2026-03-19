@@ -1,7 +1,7 @@
 using Engine.Client;
 using Engine.Core;
+using InMemory;
 using NATS.Client.Core;
-using InMemoryParentComponent = InMemoryParent.InMemoryParent;
 
 Console.WriteLine("Engine.Sandbox starting…");
 
@@ -18,7 +18,7 @@ Console.WriteLine("Connected to NATS. Ready to experiment!");
 var entity = await world.CreateEntityAsync();
 Console.WriteLine($"Created entity {entity.Id}");
 
-await entity.AddComponentAsync<InMemoryParentComponent>();
+await entity.AddComponentAsync<InMemoryParent>();
 var parent = entity.GetComponentProxy<ParentProxy>();
 
 var components = await entity.ListComponentsAsync();

@@ -1,10 +1,11 @@
 using System.Numerics;
 using Engine.Client;
 using Engine.Module;
+using InMemory;
 
-namespace InMemoryPose.Worker;
+namespace InMemory.Workers;
 
-public partial class InMemoryPoseWorker : ComponentWorker<global::InMemoryPose.InMemoryPose>
+public partial class InMemoryPoseWorker : ComponentWorker<InMemoryPose>
 {
     private Pose _pose = new Pose { Position = Vector3.Zero, Rotation = Quaternion.Identity };
 

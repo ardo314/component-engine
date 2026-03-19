@@ -1,6 +1,6 @@
 using Engine.Client;
 
-namespace InMemoryPose;
+namespace InMemory;
 
 [Has<IPose>]
 public struct InMemoryPose : IComponent { }
