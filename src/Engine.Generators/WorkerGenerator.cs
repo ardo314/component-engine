@@ -386,12 +386,7 @@ public sealed class WorkerGenerator : IIncrementalGenerator
         public string? ParamType { get; }
         public string ParamName { get; }
 
-        public MethodInfo(
-            string name,
-            string? returnDataType,
-            string? paramType,
-            string paramName
-        )
+        public MethodInfo(string name, string? returnDataType, string? paramType, string paramName)
         {
             Name = name;
             ReturnDataType = returnDataType;
