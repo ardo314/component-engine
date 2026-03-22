@@ -2,7 +2,7 @@
 
 ## Overview
 
-Resolver Engine is an **Entity-Component-Behaviour** engine built with .NET 9 and C#. Entities are lightweight identifiers; behaviours define data contracts as interfaces; component structs declare which behaviours they provide via `[Has<T>]` attributes; module workers provide concrete storage and logic for those contracts. Communication between the backend and module runtimes uses **NATS** as the message transport with **MessagePack** serialization. A Roslyn-based source generator (**Engine.Generators**) eliminates boilerplate by generating client-side NATS proxies and worker-side dispatch code for behaviour interfaces.
+Resolver Engine is an **Entity-Component-Behaviour** engine built with .NET 9 and C#. Entities are lightweight identifiers; behaviours define data contracts as interfaces; component structs declare which behaviours they provide via `[HasBehaviour<T>]` attributes; module workers provide concrete storage and logic for those contracts. Communication between the backend and module runtimes uses **NATS** as the message transport with **MessagePack** serialization. A Roslyn-based source generator (**Engine.Generators**) eliminates boilerplate by generating client-side NATS proxies and worker-side dispatch code for behaviour interfaces.
 
 ## Solution Layout
 
@@ -10,7 +10,7 @@ Resolver Engine is an **Entity-Component-Behaviour** engine built with .NET 9 an
 Engine.sln
 ├── src/                              # Core libraries and executables
 │   ├── Engine.Core                   # Shared value types (EntityId)
-│   ├── Engine.Client                 # Client-side proxies (Entity, World) and contracts (IComponent, IBehaviour, HasAttribute, value types)
+│   ├── Engine.Client                 # Client-side proxies (Entity, World) and contracts (IComponent, IBehaviour, HasBehaviourAttribute, value types)
 │   ├── Engine.Generators             # Roslyn source generator (analyzer)
 │   ├── Engine.Worker                 # Worker-side abstractions (ComponentWorker, IDataDispatch)
 │   ├── Engine.WorkerRuntime          # Executable host for running workers
@@ -69,13 +69,13 @@ All operations are thread-safe via `ConcurrentDictionary`.
 
 ### Component
 
-A **component** is a concrete marker struct that implements `IComponent` and declares which behaviours it provides via `[Has<T>]` attributes.
+A **component** is a concrete marker struct that implements `IComponent` and declares which behaviours it provides via `[HasBehaviour<T>]` attributes.
 
 - `IComponent` — marker interface implemented by all component structs.
 
 Components are structs that represent a named, deployable unit of functionality. They carry no data or logic themselves — they serve as type-level identifiers for adding/removing functionality to entities.
 
-`IComponent`, `HasAttribute<T>`, and all behaviour interfaces live in **Engine.Client** so they can be shared between client, module, and module-core code without requiring a dependency on the backend.
+`IComponent`, `HasBehaviourAttribute<T>`, and all behaviour interfaces live in **Engine.Client** so they can be shared between client, module, and module-core code without requiring a dependency on the backend.
 
 ### Behaviour
 
@@ -89,42 +89,42 @@ A **behaviour** is a data/logic contract defined as an interface in Engine.Clien
 
 Behaviours are **interfaces only**; they carry no implementation. Any interface extending `IBehaviour` can define arbitrary async methods (returning `Task` or `Task<T>`, with zero or one value parameter plus an optional `CancellationToken`). The source generator produces client-side proxies and worker-side dispatch code for all methods declared on a behaviour interface.
 
-### Component Marker Structs and `Has<T>`
+### Component Marker Structs and `HasBehaviour<T>`
 
-Each module defines a **component struct** in a core project (e.g. `InMemory`) that implements `IComponent` and declares which behaviour interfaces it provides via `[Has<T>]` attributes:
+Each module defines a **component struct** in a core project (e.g. `InMemory`) that implements `IComponent` and declares which behaviour interfaces it provides via `[HasBehaviour<T>]` attributes:
 
 ```csharp
-[Has<IPose>]
+[HasBehaviour<IPose>]
 public struct InMemoryPose : IComponent { }
 ```
 
 A single struct can provide multiple behaviour interfaces:
 
 ```csharp
-[Has<IPose>]
-[Has<IParent>]
+[HasBehaviour<IPose>]
+[HasBehaviour<IParent>]
 public struct InMemoryPoseAndParent : IComponent { }
 ```
 
 Component structs serve three purposes:
 1. **Client-side `AddComponentAsync<T>()`** — the client uses the struct type to add components: `entity.AddComponentAsync<InMemoryPose>()`.
 2. **Worker type argument** — workers are generic over the component struct: `ComponentWorker<InMemoryPose>`.
-3. **Source generator input** — the generator reads `[Has<>]` attributes to determine which behaviour interfaces the worker must implement and generates dispatch code accordingly.
+3. **Source generator input** — the generator reads `[HasBehaviour<>]` attributes to determine which behaviour interfaces the worker must implement and generates dispatch code accordingly.
 
 Component structs live in `<Name>` projects (e.g. `InMemoryPose`) so they can be shared between client code and module implementations without pulling in worker dependencies.
 
-### `HasAttribute<T>`
+### `HasBehaviourAttribute<T>`
 
-`HasAttribute<T>` (Engine.Client) is a generic attribute with an abstract base class for runtime reflection:
+`HasBehaviourAttribute<T>` (Engine.Client) is a generic attribute with an abstract base class for runtime reflection:
 
 ```csharp
 [AttributeUsage(AttributeTargets.Struct, AllowMultiple = true)]
-public abstract class HasAttribute : Attribute
+public abstract class HasBehaviourAttribute : Attribute
 {
     public abstract Type ComponentType { get; }
 }
 
-public sealed class HasAttribute<T> : HasAttribute where T : IBehaviour
+public sealed class HasBehaviourAttribute<T> : HasBehaviourAttribute where T : IBehaviour
 {
     public override Type ComponentType => typeof(T);
 }
@@ -138,7 +138,7 @@ public sealed class HasAttribute<T> : HasAttribute where T : IBehaviour
 - `OnAddedAsync(CancellationToken)` — called when the component is attached to an entity.
 - `OnRemovedAsync(CancellationToken)` — called when the component is removed.
 
-Concrete workers (e.g., `InMemoryPoseWorker`, `InMemoryParentWorker`) extend this base and implement the methods from their behaviour interfaces (as determined by the `[Has<>]` attributes on the component struct). One worker instance is created per `(EntityId, componentStruct)` pair. When a component struct declares multiple `[Has<>]` interfaces, the worker must implement all of them.
+Concrete workers (e.g., `InMemoryPoseWorker`, `InMemoryParentWorker`) extend this base and implement the methods from their behaviour interfaces (as determined by the `[HasBehaviour<>]` attributes on the component struct). One worker instance is created per `(EntityId, componentStruct)` pair. When a component struct declares multiple `[HasBehaviour<>]` interfaces, the worker must implement all of them.
 
 ### IDataDispatch
 
@@ -155,7 +155,7 @@ It provides a single entry point for the WorkerRuntime to invoke any behaviour m
 
 ### Source Generators (Engine.Generators)
 
-Engine.Generators contains two Roslyn `IIncrementalGenerator` implementations (`netstandard2.0`, referenced as an analyzer). Both discover `ComponentWorker<T>` declarations in the current compilation and read `[Has<>]` attributes from the component struct `T` to determine which behaviour interfaces a worker provides.
+Engine.Generators contains two Roslyn `IIncrementalGenerator` implementations (`netstandard2.0`, referenced as an analyzer). Both discover `ComponentWorker<T>` declarations in the current compilation and read `[HasBehaviour<>]` attributes from the component struct `T` to determine which behaviour interfaces a worker provides.
 
 #### WorkerGenerator
 
@@ -165,8 +165,8 @@ Generates **worker-side partial classes** — for each `partial` class inheritin
 
 Generates two kinds of client-side proxy code:
 
-- **Behaviour proxy classes** — for each behaviour interface referenced by `[Has<>]` on a worker's component struct, the generator emits a proxy class (e.g., `PoseProxy` for `IPose`) that implements the behaviour interface and `IProxy`, and forwards each method call over NATS request-reply to the WorkerRuntime.
-- **Component proxy classes** — for each component struct that a worker handles, the generator emits a proxy class named `{StructName}Proxy` (e.g., `InMemoryPoseProxy` for `InMemoryPose`) that implements **all** behaviour interfaces declared via `[Has<>]` plus `IProxy`. Methods use explicit interface implementations to handle name collisions when multiple behaviours share method signatures (e.g., `GetDataAsync` on both `IPose` and `IParent`). Each method forwards to the same `component.<interfaceName>.<methodName>` NATS subjects used by behaviour proxies.
+- **Behaviour proxy classes** — for each behaviour interface referenced by `[HasBehaviour<>]` on a worker's component struct, the generator emits a proxy class (e.g., `PoseProxy` for `IPose`) that implements the behaviour interface and `IProxy`, and forwards each method call over NATS request-reply to the WorkerRuntime.
+- **Component proxy classes** — for each component struct that a worker handles, the generator emits a proxy class named `{StructName}Proxy` (e.g., `InMemoryPoseProxy` for `InMemoryPose`) that implements **all** behaviour interfaces declared via `[HasBehaviour<>]` plus `IProxy`. Methods use explicit interface implementations to handle name collisions when multiple behaviours share method signatures (e.g., `GetDataAsync` on both `IPose` and `IParent`). Each method forwards to the same `component.<interfaceName>.<methodName>` NATS subjects used by behaviour proxies.
 
 Because all outputs are derived from worker declarations, generated code is only emitted in module projects that contain `ComponentWorker<T>` subclasses — not in consumer projects like the Sandbox. Consumer projects access the proxy types by referencing the module project.
 
@@ -220,14 +220,14 @@ InMemory.Workers ──references──▶ Engine.Core, Engine.Worker, InMemory
 Two executable projects exist:
 
 1. **Engine.Backend** — the central server process. Hosts the `EntityService` (entity lifecycles and component tracking) over NATS. Acts as a two-phase orchestrator: when a component is added or removed, the backend first sends a NATS request to the module runtime and only commits the change to the entity registry if the runtime responds successfully.
-2. **Engine.WorkerRuntime** — the module host process. Connects to NATS, discovers module DLLs, builds a type registry of `ComponentWorker<T>` types, reads `[Has<>]` attributes from their component structs, and subscribes to `worker.create.<structName>` and `worker.remove.<structName>` subjects to create/destroy worker instances on demand. Additionally subscribes to `component.<interfaceName>.*` subjects to dispatch behaviour method calls to live workers via their `IDataDispatch` implementation.
+2. **Engine.WorkerRuntime** — the module host process. Connects to NATS, discovers module DLLs, builds a type registry of `ComponentWorker<T>` types, reads `[HasBehaviour<>]` attributes from their component structs, and subscribes to `worker.create.<structName>` and `worker.remove.<structName>` subjects to create/destroy worker instances on demand. Additionally subscribes to `component.<interfaceName>.*` subjects to dispatch behaviour method calls to live workers via their `IDataDispatch` implementation.
 
 ### Component Add Flow
 
 1. A client calls `Entity.AddComponentAsync<T>()`, which sends a request to `entity.add-component` with the component struct name.
 2. The backend validates the request (entity exists, component not already added).
 3. The backend sends a NATS request to `worker.create.<structName>` with the `EntityId` as payload.
-4. The module runtime creates a new `ComponentWorker<T>` instance, sets its `EntityId` property, calls `OnAddedAsync`, registers the worker for all behaviour interfaces declared by the struct's `[Has<>]` attributes, and replies `"ok"`.
+4. The module runtime creates a new `ComponentWorker<T>` instance, sets its `EntityId` property, calls `OnAddedAsync`, registers the worker for all behaviour interfaces declared by the struct's `[HasBehaviour<>]` attributes, and replies `"ok"`.
 5. On success, the backend registers the component in the `EntityRepository` and replies `"ok"` to the caller.
 6. On failure (no responders, timeout, or error), the backend replies with an error and does **not** register the component.
 

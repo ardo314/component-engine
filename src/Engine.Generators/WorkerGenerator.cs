@@ -12,7 +12,7 @@ namespace Engine.Generators;
 public sealed class WorkerGenerator : IIncrementalGenerator
 {
     private const string ComponentWorkerFqn = "Engine.Worker.ComponentWorker";
-    private const string HasAttributeFqn = "Engine.Client.HasAttribute";
+    private const string HasBehaviourAttributeFqn = "Engine.Client.HasBehaviourAttribute";
     private const string IBehaviourFqn = "Engine.Client.IBehaviour";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -117,7 +117,7 @@ public sealed class WorkerGenerator : IIncrementalGenerator
         Compilation compilation
     )
     {
-        var hasAttributeType = compilation.GetTypeByMetadataName($"{HasAttributeFqn}`1");
+        var hasAttributeType = compilation.GetTypeByMetadataName($"{HasBehaviourAttributeFqn}`1");
         if (hasAttributeType is null)
             return ImmutableArray<INamedTypeSymbol>.Empty;
 

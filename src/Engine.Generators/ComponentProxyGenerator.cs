@@ -14,7 +14,7 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
     private const string IComponentFqn = "Engine.Client.IComponent";
     private const string IBehaviourFqn = "Engine.Client.IBehaviour";
     private const string ComponentWorkerFqn = "Engine.Worker.ComponentWorker";
-    private const string HasAttributeFqn = "Engine.Client.HasAttribute";
+    private const string HasBehaviourAttributeFqn = "Engine.Client.HasBehaviourAttribute";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -219,7 +219,7 @@ public sealed class ComponentProxyGenerator : IIncrementalGenerator
         Compilation compilation
     )
     {
-        var hasAttributeType = compilation.GetTypeByMetadataName($"{HasAttributeFqn}`1");
+        var hasAttributeType = compilation.GetTypeByMetadataName($"{HasBehaviourAttributeFqn}`1");
         if (hasAttributeType is null)
             return ImmutableArray<INamedTypeSymbol>.Empty;
 
