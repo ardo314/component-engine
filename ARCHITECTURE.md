@@ -52,6 +52,16 @@ Engine.sln
 - **publish** — `dotnet publish Engine.sln`
 - **watch** — `dotnet watch run` (solution-level)
 
+### Docker
+
+Engine.Backend ships with a multi-stage Dockerfile at `src/Engine.Backend/Dockerfile`. Build the image from the repository root:
+
+```bash
+docker build -f src/Engine.Backend/Dockerfile -t engine-backend .
+```
+
+The image uses the `mcr.microsoft.com/dotnet/runtime:9.0-bookworm-slim` base and exposes only the published backend binary. A `.dockerignore` at the repository root excludes build artifacts and metadata from the build context.
+
 ## Key Concepts
 
 ### Entity
