@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "engine/core" },
-    { "path": "engine/backend" }
+    { "path": "engine/backend" },
+    { "path": "engine/client" }
   ]
 }
