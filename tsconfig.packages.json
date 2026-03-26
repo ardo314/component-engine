@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
-    { "path": "engine/core" }
+    { "path": "engine/core" },
+    { "path": "engine/backend" }
   ]
 }
