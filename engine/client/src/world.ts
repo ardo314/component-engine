@@ -15,7 +15,8 @@ export class World {
     return new Entity(this.nc, id);
   }
 
-  async deleteEntity(id: EntityId): Promise<boolean> {
+  async deleteEntity(entity: EntityId | Entity): Promise<boolean> {
+    const id = entity instanceof Entity ? entity.id : entity;
     const reply = await this.nc.request(Subjects.deleteEntity, sc.encode(id));
     return sc.decode(reply.data) === "true";
   }

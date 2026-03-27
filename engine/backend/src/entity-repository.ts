@@ -18,7 +18,7 @@ export class EntityRepository {
     return this.entities.has(id);
   }
 
-  get all(): ReadonlySet<EntityId> {
+  getAll(): ReadonlySet<EntityId> {
     return this.entities;
   }
 }
