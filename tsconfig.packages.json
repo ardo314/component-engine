@@ -3,6 +3,7 @@
   "references": [
     { "path": "engine/core" },
     { "path": "engine/backend" },
-    { "path": "engine/client" }
+    { "path": "engine/client" },
+    { "path": "engine/module" }
   ]
 }

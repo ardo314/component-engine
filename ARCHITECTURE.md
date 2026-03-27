@@ -9,6 +9,7 @@ Monorepo with three packages under `engine/`:
 | `@engine/core`    | `engine/core`    | Core types: entities, components, contracts |
 | `@engine/backend` | `engine/backend` | Server-side entity management               |
 | `@engine/client`  | `engine/client`  | Client-side API                             |
+| `@engine/module`  | `engine/module`  | Module system (depends on client)            |
 
 All packages use TypeScript project references and build via `tsc --build`.
 
