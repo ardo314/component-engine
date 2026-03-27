@@ -1,26 +1,26 @@
 import { z } from "zod";
 
-type Id = string & { readonly __brand: unique symbol };
+type ComponentId = string & { readonly __brand: unique symbol };
 
 type MethodSchema = {
   readonly input?: z.ZodType;
   readonly output?: z.ZodType;
 };
 
-export type ComponentSchema = {
+type ComponentSchema = {
   readonly properties?: Record<string, z.ZodType>;
   readonly methods?: Record<string, MethodSchema>;
 };
 
 interface Component {
-  readonly id: Id;
+  readonly id: ComponentId;
   readonly contract: ComponentSchema;
 }
 
 export function defineComponent<const C extends ComponentSchema>(
-  id: Id,
+  id: ComponentId,
   contract: C,
-): { readonly id: Id; readonly contract: C } {
+): { readonly id: ComponentId; readonly contract: C } {
   return {
     id: id,
     contract: contract,
@@ -53,33 +53,3 @@ export type ComponentProxy<T extends Component> =
     (T["contract"]["methods"] extends Record<string, MethodSchema>
       ? InferMethods<T["contract"]["methods"]>
       : unknown);
-
-const MyComponent = defineComponent("position" as Id, {
-  properties: {
-    x: z.number(),
-    y: z.number(),
-  },
-  methods: {
-    moveBy: {
-      input: z.object({
-        dx: z.number(),
-        dy: z.number(),
-      }),
-    },
-    move: {},
-    moveFoo: {
-      input: z.object({
-        x: z.number(),
-        y: z.number(),
-      }),
-      output: z.object({
-        success: z.boolean(),
-      }),
-    },
-    distance: {
-      output: z.number(),
-    },
-  },
-});
-
-type MyComponentProxy = ComponentProxy<typeof MyComponent>;
