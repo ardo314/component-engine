@@ -12,7 +12,7 @@ type ComponentSchema = {
   readonly methods?: Record<string, MethodSchema>;
 };
 
-interface Component {
+export interface Component {
   readonly id: ComponentId;
   readonly contract: ComponentSchema;
 }
