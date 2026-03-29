@@ -1,5 +1,5 @@
 {
-  "name": "@ardo314/in-memory",
+  "name": "@ardo314/core",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -11,7 +11,6 @@
     "clean": "tsc --build --clean"
   },
   "dependencies": {
-    "@ardo314/core": "0.0.1",
     "@engine/core": "0.0.1"
   }
 }

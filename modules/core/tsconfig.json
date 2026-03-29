@@ -6,7 +6,6 @@
   "extends": "../../tsconfig.json",
   "include": ["src"],
   "references": [
-    { "path": "../../engine/core" },
-    { "path": "../core" }
+    { "path": "../../engine/core" }
   ]
 }

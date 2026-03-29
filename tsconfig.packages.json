@@ -6,6 +6,7 @@
     { "path": "engine/client" },
     { "path": "engine/module" },
     { "path": "engine/editor" },
+    { "path": "modules/core" },
     { "path": "modules/in-memory" },
     { "path": "modules/in-memory-workers" }
   ]

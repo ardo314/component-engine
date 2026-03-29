@@ -1,5 +1,5 @@
-import { defineComponent } from "@engine/core";
-import { entityIdSchema } from "@engine/core/src/entity-id.js";
+import { defineComponent, entityIdSchema } from "@engine/core";
+import { poseSchema } from "@ardo314/core";
 import { z } from "zod";
 
 export const name = defineComponent("in-memory.name", {
@@ -16,7 +16,6 @@ export const parent = defineComponent("in-memory.parent", {
 
 export const pose = defineComponent("in-memory.pose", {
   properties: {
-    position: z.tuple([z.number(), z.number(), z.number()]),
-    rotation: z.tuple([z.number(), z.number(), z.number()]),
+    value: poseSchema,
   },
 });

@@ -11,6 +11,7 @@ Monorepo with engine packages under `engine/` and user modules under `modules/`:
 | `@engine/client`             | `engine/client`             | Client-side API                             |
 | `@engine/module`             | `engine/module`             | Module system (depends on client)           |
 | `@engine/editor`             | `engine/editor`             | Vite + React frontend                       |
+| `@ardo314/core`              | `modules/core`              | Core user components (depends on core)      |
 | `@ardo314/in-memory`         | `modules/in-memory`         | User module (depends on core)               |
 | `@ardo314/in-memory-workers` | `modules/in-memory-workers` | User module (depends on module, in-memory)  |
 

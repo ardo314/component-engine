@@ -2,24 +2,17 @@ import { pose } from "@ardo314/in-memory";
 import { defineComponentWorker } from "@engine/module";
 
 export const poseWorker = defineComponentWorker(pose, () => {
-  let position: [number, number, number] = [0, 0, 0];
-  let rotation: [number, number, number] = [0, 0, 0];
+  let _value: [number, number, number, number, number, number] = [
+    0, 0, 0, 0, 0, 0,
+  ];
 
   return {
-    position: {
+    value: {
       async get() {
-        return position;
+        return _value;
       },
-      async set(v) {
-        position = v;
-      },
-    },
-    rotation: {
-      async get() {
-        return rotation;
-      },
-      async set(v) {
-        rotation = v;
+      async set(v: [number, number, number, number, number, number]) {
+        _value = v;
       },
     },
   };
