@@ -19,3 +19,13 @@ export const parent = defineComponent("nova.parent", {
 
 export type Parent = typeof parent;
 export type ParentProxy = ComponentProxy<Parent>;
+
+export const pose = defineComponent("nova.pose", {
+  properties: {
+    position: z.tuple([z.number(), z.number(), z.number()]),
+    rotation: z.tuple([z.number(), z.number(), z.number()]),
+  },
+});
+
+export type Pose = typeof pose;
+export type PoseProxy = ComponentProxy<Pose>;
