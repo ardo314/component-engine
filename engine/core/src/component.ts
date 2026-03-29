@@ -20,11 +20,11 @@ export interface Component {
 }
 
 export function defineComponent<const C extends ComponentSchema>(
-  id: ComponentId,
+  id: string,
   schema: C,
 ): { readonly id: ComponentId; readonly schema: C } {
   return {
-    id: id,
+    id: id as ComponentId,
     schema: schema,
   };
 }
