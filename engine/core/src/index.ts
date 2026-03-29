@@ -1,4 +1,4 @@
-export { EntityId } from "./entity-id.js";
+export { EntityId, entityIdSchema } from "./entity-id.js";
 export { defineComponent, Component } from "./component.js";
 export type {
   ComponentProxy,
