@@ -1,24 +1,20 @@
 import { parent } from "@ardo314/in-memory";
 import { EntityId, entityIdSchema } from "@engine/core";
-import { ComponentProperty, ComponentWorker } from "@engine/module";
+import { defineComponentWorker } from "@engine/module";
 
-export class ParentWorker extends ComponentWorker<typeof parent> {
-  private _value: EntityId = entityIdSchema.parse("");
+export const parentWorker = defineComponentWorker(parent, () => {
+  let _value = entityIdSchema.parse("");
 
-  readonly value: ComponentProperty<EntityId>;
+  const valueProperty = {
+    async get() {
+      return _value;
+    },
+    async set(v: EntityId) {
+      _value = entityIdSchema.parse(v);
+    },
+  };
 
-  constructor() {
-    super();
-
-    const self = this;
-
-    this.value = {
-      async get() {
-        return self._value;
-      },
-      async set(value: EntityId) {
-        self._value = value;
-      },
-    };
-  }
-}
+  return {
+    value: valueProperty,
+  };
+});

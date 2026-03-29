@@ -1,23 +1,19 @@
 import { name } from "@ardo314/in-memory";
-import { ComponentProperty, ComponentWorker } from "@engine/module";
+import { defineComponentWorker } from "@engine/module";
 
-export class NameWorker extends ComponentWorker<typeof name> {
-  private _value: string = "";
+export const nameWorker = defineComponentWorker(name, () => {
+  let _value = "";
 
-  readonly value: ComponentProperty<string>;
+  const value = {
+    async get() {
+      return _value;
+    },
+    async set(v: string) {
+      _value = v;
+    },
+  };
 
-  constructor() {
-    super();
-
-    const self = this;
-
-    this.value = {
-      async get() {
-        return self._value;
-      },
-      async set(value: string) {
-        self._value = value;
-      },
-    };
-  }
-}
+  return {
+    value,
+  };
+});

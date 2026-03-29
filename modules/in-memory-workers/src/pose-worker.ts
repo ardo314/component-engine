@@ -1,23 +1,26 @@
 import { pose } from "@ardo314/in-memory";
-import { ComponentProperty, ComponentWorker } from "@engine/module";
+import { defineComponentWorker } from "@engine/module";
 
-export class PoseWorker extends ComponentWorker<typeof pose> {
-  private _value: string = "";
+export const poseWorker = defineComponentWorker(pose, () => {
+  let position: [number, number, number] = [0, 0, 0];
+  let rotation: [number, number, number] = [0, 0, 0];
 
-  readonly value: ComponentProperty<string>;
-
-  constructor() {
-    super();
-
-    const self = this;
-
-    this.value = {
+  return {
+    position: {
       async get() {
-        return self._value;
+        return position;
       },
-      async set(value: string) {
-        self._value = value;
+      async set(v) {
+        position = v;
       },
-    };
-  }
-}
+    },
+    rotation: {
+      async get() {
+        return rotation;
+      },
+      async set(v) {
+        rotation = v;
+      },
+    },
+  };
+});
