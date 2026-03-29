@@ -19,3 +19,9 @@ export const pose = defineComponent("in-memory.pose", {
     value: poseSchema,
   },
 });
+
+export const followPose = defineComponent("in-memory.follow-pose", {
+  properties: {
+    target: entityIdSchema,
+  },
+});
