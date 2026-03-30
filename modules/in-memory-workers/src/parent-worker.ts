@@ -1,8 +1,8 @@
-import { parent } from "@ardo314/in-memory";
+import { parentComponent } from "@ardo314/in-memory";
 import { EntityId, entityIdSchema } from "@engine/core";
 import { defineComponentWorker } from "@engine/module";
 
-export const parentWorker = defineComponentWorker(parent, () => {
+export const parentWorker = defineComponentWorker(parentComponent, () => {
   let _value = entityIdSchema.parse("");
 
   const value = {

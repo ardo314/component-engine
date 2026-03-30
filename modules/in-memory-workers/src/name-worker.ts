@@ -1,7 +1,7 @@
-import { name } from "@ardo314/in-memory";
+import { nameComponent } from "@ardo314/in-memory";
 import { defineComponentWorker } from "@engine/module";
 
-export const nameWorker = defineComponentWorker(name, () => {
+export const nameWorker = defineComponentWorker(nameComponent, () => {
   let _value = "";
 
   const value = {
