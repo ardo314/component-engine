@@ -1,62 +1,42 @@
-import { z } from "zod";
+import type { Schema, SchemaProxy } from "./schema.js";
 
 export type ComponentId = string & { readonly __brand: unique symbol };
 
-export type ComponentPropertySchema = z.ZodType;
-
-export type ComponentMethodSchema = {
-  readonly input?: z.ZodType;
-  readonly output?: z.ZodType;
-};
-
-type ComponentSchema = {
-  readonly properties?: Record<string, ComponentPropertySchema>;
-  readonly methods?: Record<string, ComponentMethodSchema>;
-};
-
-export interface Component {
+export interface Component<S extends Schema[] = Schema[]> {
+  readonly __type: "component";
   readonly id: ComponentId;
-  readonly schema: ComponentSchema;
+  readonly schemas: S;
 }
 
-export function defineComponent<const C extends ComponentSchema>(
-  id: string,
-  schema: C,
-): { readonly id: ComponentId; readonly schema: C } {
+export function defineComponent<const S extends Schema[]>(
+  ...schemas: S
+): Component<S> {
+  const id = schemas
+    .map((s) => s.id as string)
+    .sort()
+    .join("|") as unknown as ComponentId;
   return {
-    id: id as ComponentId,
-    schema: schema,
+    __type: "component" as const,
+    id,
+    schemas,
   };
 }
 
-export type InferComponentProperties<
-  P extends Record<string, ComponentPropertySchema>,
-> = {
-  [K in keyof P]: {
-    get(): Promise<z.infer<P[K]>>;
-    set(value: z.infer<P[K]>): Promise<void>;
-  };
-};
+type UnionToIntersection<U> = (
+  U extends unknown ? (k: U) => void : never
+) extends (k: infer I) => void
+  ? I
+  : never;
 
-export type InferComponentMethod<M extends ComponentMethodSchema> =
-  M["input"] extends z.ZodType
-    ? M["output"] extends z.ZodType
-      ? (input: z.infer<M["input"]>) => Promise<z.infer<M["output"]>>
-      : (input: z.infer<M["input"]>) => Promise<void>
-    : M["output"] extends z.ZodType
-      ? () => Promise<z.infer<M["output"]>>
-      : () => Promise<void>;
+export type ComponentProxy<C extends Component> = UnionToIntersection<
+  SchemaProxy<C["schemas"][number]>
+>;
 
-export type InferComponentMethods<
-  M extends Record<string, ComponentMethodSchema>,
-> = {
-  [K in keyof M]: InferComponentMethod<M[K]>;
-};
-
-export type ComponentProxy<T extends Component> =
-  (T["schema"]["properties"] extends Record<string, ComponentPropertySchema>
-    ? InferComponentProperties<T["schema"]["properties"]>
-    : unknown) &
-    (T["schema"]["methods"] extends Record<string, ComponentMethodSchema>
-      ? InferComponentMethods<T["schema"]["methods"]>
-      : unknown);
+export function isComponent(value: unknown): value is Component {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "__type" in value &&
+    (value as Component).__type === "component"
+  );
+}

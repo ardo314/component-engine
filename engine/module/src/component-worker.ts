@@ -1,13 +1,13 @@
 import type { Component, ComponentProxy } from "@engine/core";
 
-export type ComponentWorker<T extends Component = Component> = {
-  readonly component: T;
-  create(): ComponentProxy<T>;
+export type ComponentWorker<C extends Component = Component> = {
+  readonly component: C;
+  create(): ComponentProxy<C>;
 };
 
-export function defineComponentWorker<T extends Component>(
-  component: T,
-  create: () => ComponentProxy<T>,
-): ComponentWorker<T> {
+export function defineComponentWorker<C extends Component>(
+  component: C,
+  create: () => ComponentProxy<C>,
+): ComponentWorker<C> {
   return { component, create };
 }

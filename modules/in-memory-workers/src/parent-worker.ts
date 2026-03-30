@@ -5,16 +5,14 @@ import { defineComponentWorker } from "@engine/module";
 export const parentWorker = defineComponentWorker(parentComponent, () => {
   let _value = entityIdSchema.parse("");
 
-  const value = {
-    async get() {
-      return _value;
-    },
-    async set(v: EntityId) {
-      _value = entityIdSchema.parse(v);
-    },
-  };
-
   return {
-    value,
+    value: {
+      async get() {
+        return _value;
+      },
+      async set(v: EntityId) {
+        _value = entityIdSchema.parse(v);
+      },
+    },
   };
 });

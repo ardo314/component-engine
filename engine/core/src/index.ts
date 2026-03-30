@@ -1,12 +1,16 @@
 export { EntityId, entityIdSchema } from "./entity-id.js";
-export { defineComponent, Component } from "./component.js";
+export { defineSchema, isSchema } from "./schema.js";
 export type {
-  ComponentProxy,
-  InferComponentMethod,
-  InferComponentProperties,
-  InferComponentMethods,
-  ComponentId,
-  ComponentMethodSchema,
-  ComponentPropertySchema,
-} from "./component.js";
+  Schema,
+  SchemaId,
+  SchemaProxy,
+  SchemaDefinition,
+  SchemaPropertyDefinition,
+  SchemaMethodDefinition,
+  InferSchemaProperties,
+  InferSchemaMethod,
+  InferSchemaMethods,
+} from "./schema.js";
+export { defineComponent, isComponent } from "./component.js";
+export type { Component, ComponentProxy, ComponentId } from "./component.js";
 export { Subjects } from "./subjects.js";

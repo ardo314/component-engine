@@ -7,17 +7,15 @@ export const followPoseWorker = defineComponentWorker(
   () => {
     let _target: EntityId = entityIdSchema.parse("");
 
-    const target = {
-      async get() {
-        return _target;
-      },
-      async set(v: EntityId) {
-        _target = v;
-      },
-    };
-
     return {
-      target,
+      target: {
+        async get() {
+          return _target;
+        },
+        async set(v: EntityId) {
+          _target = v;
+        },
+      },
     };
   },
 );

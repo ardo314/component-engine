@@ -5,4 +5,6 @@ export const Subjects = {
   addComponent: "engine.entity.addComponent",
   removeComponent: "engine.entity.removeComponent",
   hasComponent: "engine.entity.hasComponent",
+  getProperty: "engine.entity.getProperty",
+  setProperty: "engine.entity.setProperty",
 } as const;

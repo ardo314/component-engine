@@ -5,16 +5,14 @@ import { defineComponentWorker } from "@engine/module";
 export const poseWorker = defineComponentWorker(poseComponent, () => {
   let _value: Pose = [0, 0, 0, 0, 0, 0];
 
-  const value = {
-    async get() {
-      return _value;
-    },
-    async set(v: Pose) {
-      _value = v;
-    },
-  };
-
   return {
-    value,
+    value: {
+      async get() {
+        return _value;
+      },
+      async set(v: Pose) {
+        _value = v;
+      },
+    },
   };
 });
