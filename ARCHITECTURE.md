@@ -4,16 +4,16 @@
 
 Monorepo with engine packages under `engine/` and user modules under `modules/`:
 
-| Package                      | Path                        | Description                                          |
-| ---------------------------- | --------------------------- | ---------------------------------------------------- |
-| `@engine/core`               | `engine/core`               | Core types: entities, components                     |
-| `@engine/backend`            | `engine/backend`            | Server-side entity structure management              |
-| `@engine/client`             | `engine/client`             | Client-side API                                      |
-| `@engine/module`             | `engine/module`             | Module system: workers, decorators, WorkerHost       |
-| `@engine/editor`             | `engine/editor`             | Vite + React frontend                                |
-| `@ardo314/core`              | `modules/core`              | Core user Zod schemas (depends on core)              |
-| `@ardo314/in-memory`         | `modules/in-memory`         | User module: component definitions (depends on core) |
-| `@ardo314/in-memory-workers` | `modules/in-memory-workers` | User module: workers (depends on module, in-memory)  |
+| Package                      | Path                        | Description                                                  |
+| ---------------------------- | --------------------------- | ------------------------------------------------------------ |
+| `@engine/core`               | `engine/core`               | Core types: entities, components                             |
+| `@engine/backend`            | `engine/backend`            | Server-side entity structure management                      |
+| `@engine/client`             | `engine/client`             | Client-side API                                              |
+| `@engine/module`             | `engine/module`             | Module system: workers, decorators, WorkerHost               |
+| `@engine/editor`             | `engine/editor`             | Vite + React frontend                                        |
+| `@ardo314/core`              | `modules/core`              | Core schemas and base components (pose, name, parent)        |
+| `@ardo314/in-memory`         | `modules/in-memory`         | In-memory component definitions that compose core components |
+| `@ardo314/in-memory-workers` | `modules/in-memory-workers` | In-memory workers (depends on module, in-memory)             |
 
 All packages use TypeScript project references and build via `tsc --build`.
 
@@ -53,6 +53,25 @@ When querying with `getComponent(component)`:
 - If the component is a composite of a directly-added component, `hasComponent` returns `true` and a scoped reference containing only that composite's own properties is returned.
 
 This allows code to query entities by capability without knowing the full composed component definition.
+
+### Core Components & Module Components
+
+`@ardo314/core` defines base components that represent fundamental capabilities:
+
+- `core.pose` — position (vector) + rotation (quaternion)
+- `core.name` — display name (string)
+- `core.parent` — parent entity reference (EntityId)
+
+These core components have no workers of their own. They exist as composites for module-specific components to include.
+
+`@ardo314/in-memory` defines implementation-specific components that compose the core ones:
+
+- `in-memory.name` composes `core.name`
+- `in-memory.parent` composes `core.parent`
+- `in-memory.pose` composes `core.pose`
+- `in-memory.follow-pose` defines own `target` property and composes `core.pose`
+
+Because in-memory components compose their core counterparts, querying an entity for `core.pose` will match any entity that has `in-memory.pose` or `in-memory.follow-pose` (or any other component that composes `core.pose`). Workers implement the in-memory components, not the core components directly.
 
 ### Component Worker
 

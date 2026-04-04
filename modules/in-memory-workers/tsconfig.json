@@ -8,6 +8,7 @@
   "references": [
     { "path": "../../engine/core" },
     { "path": "../../engine/module" },
+    { "path": "../core" },
     { "path": "../in-memory" }
   ]
 }

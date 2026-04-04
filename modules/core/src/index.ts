@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { defineComponent, entityIdSchema } from "@engine/core";
 
 export const vector2Schema = z.tuple([z.number(), z.number()]);
 
@@ -49,3 +50,23 @@ export namespace Pose {
     return [pose[3], pose[4], pose[5]];
   }
 }
+
+// --- Core components ---
+
+export const poseComponent = defineComponent("core.pose", {
+  properties: {
+    pose: poseSchema,
+  },
+});
+
+export const nameComponent = defineComponent("core.name", {
+  properties: {
+    name: z.string(),
+  },
+});
+
+export const parentComponent = defineComponent("core.parent", {
+  properties: {
+    parent: entityIdSchema,
+  },
+});
