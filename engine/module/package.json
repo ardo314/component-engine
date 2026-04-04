@@ -11,8 +11,6 @@
     "clean": "tsc --build --clean"
   },
   "dependencies": {
-    "@engine/client": "0.0.1",
-    "@engine/core": "0.0.1",
-    "zod": "^4.3.6"
+    "@engine/client": "0.0.1"
   }
 }
