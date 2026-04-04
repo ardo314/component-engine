@@ -58,7 +58,7 @@ This allows code to query entities by capability without knowing the full compos
 
 A `ComponentWorker` is a class that implements the runtime behaviour for a component. There is **one worker instance per component on an entity**. Workers are defined using a single decorator:
 
-- **`@Implements(component)`** — Class decorator. Declares which component (defined via `defineComponent`) the worker implements. The single component carries its composites, so the worker implicitly covers everything.
+- **`@Implements(component)`** — Class decorator. Declares which component (defined via `defineComponent`) the worker implements. The single component carries its composites, so the worker implicitly covers everything. The decorator is generic over the component type: if the worker class does not implement all required property accessors and methods, TypeScript reports a compile-time error. The expected shape is captured by the `WorkerImplementation<C>` type.
 
 The component definition is the single source of truth for which properties and methods a worker exposes. For each component property, the worker class provides a matching field implementing the `ComponentProperty<T>` interface — an object with `get()` and `set(value)` methods (sync or async). For each component method, the worker provides a matching instance method. Property schemas and method signatures come from the component's `defineComponent(...)` call — workers do not redeclare them.
 
