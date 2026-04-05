@@ -8,6 +8,8 @@
     { "path": "engine/editor" },
     { "path": "modules/core" },
     { "path": "modules/in-memory" },
-    { "path": "modules/in-memory-workers" }
+    { "path": "modules/in-memory-workers" },
+    { "path": "modules/nova" },
+    { "path": "modules/nova-workers" }
   ]
 }

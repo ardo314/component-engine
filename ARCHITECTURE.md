@@ -14,6 +14,8 @@ Monorepo with engine packages under `engine/` and user modules under `modules/`:
 | `@ardo314/core`              | `modules/core`              | Core schemas and base components (pose, name, parent)        |
 | `@ardo314/in-memory`         | `modules/in-memory`         | In-memory component definitions that compose core components |
 | `@ardo314/in-memory-workers` | `modules/in-memory-workers` | In-memory workers (depends on module, in-memory)             |
+| `@ardo314/nova`              | `modules/nova`              | Nova component definitions that compose core components      |
+| `@ardo314/nova-workers`      | `modules/nova-workers`      | Nova workers (depends on module, nova)                       |
 
 All packages use TypeScript project references and build via `tsc --build`.
 
