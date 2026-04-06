@@ -9,7 +9,7 @@ COPY package.json tsconfig.json tsconfig.packages.json ./
 COPY engine/core/package.json engine/core/
 COPY engine/backend/package.json engine/backend/
 
-RUN npm install --workspace=@engine/core --workspace=@engine/backend
+RUN npm install
 
 # Copy source for core and backend
 COPY engine/core/tsconfig.json engine/core/
@@ -17,7 +17,7 @@ COPY engine/core/src/ engine/core/src/
 COPY engine/backend/tsconfig.json engine/backend/
 COPY engine/backend/src/ engine/backend/src/
 
-RUN npx -p typescript tsc --build engine/backend
+RUN npx tsc --build engine/backend
 
 # --- production image ---
 FROM node:25-slim
