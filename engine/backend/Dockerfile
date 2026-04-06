@@ -17,7 +17,7 @@ COPY engine/core/src/ engine/core/src/
 COPY engine/backend/tsconfig.json engine/backend/
 COPY engine/backend/src/ engine/backend/src/
 
-RUN npx tsc --build engine/backend
+RUN npx -p typescript tsc --build engine/backend
 
 # --- production image ---
 FROM node:25-slim
