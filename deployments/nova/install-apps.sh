@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Bootstrapper script — runs inside a NOVA cell app container.
+# component-engine-nova installer script — runs inside a NOVA cell app container.
 # Installs component-engine services as apps into the cell via the NOVA API.
 #
 # NOVA auto-injects these environment variables:
@@ -52,7 +52,8 @@ install_app() {
 # ---------------------------------------------------------------------------
 
 # Backend — entity structure management over NATS
-BACKEND_IMAGE="${BACKEND_IMAGE:-ghcr.io/OWNER/component-engine-backend:latest}"
+VERSION="${VERSION:-latest}"
+BACKEND_IMAGE="${BACKEND_IMAGE:-ghcr.io/ardo314/component-engine-backend:${VERSION}}"
 
 install_app "$(cat <<EOF
 {
@@ -74,7 +75,7 @@ EOF
 # ---------------------------------------------------------------------------
 
 echo ""
-echo "All apps installed. Bootstrapper done."
+echo "All apps installed. component-engine-nova done."
 
 # Keep the container alive so NOVA does not restart it.
 exec tail -f /dev/null
