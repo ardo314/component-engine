@@ -143,3 +143,12 @@ Each property and method gets its own NATS subject. Workers subscribe to these s
 - **Module:** Node16
 - **Build command:** `npm run build` (root)
 - **Watch:** `npm run watch` (root)
+
+## Versioning & Release
+
+The project uses [semantic-release](https://github.com/semantic-release/semantic-release) for automated semantic versioning on `main`, following a trunk-based development workflow:
+
+- **Branching model:** All work happens on short-lived feature branches. PRs are **squash-merged** into `main`, producing a single conventional commit per PR.
+- **Commit convention:** [Conventional Commits](https://www.conventionalcommits.org/) — the squash merge commit message (PR title) determines the version bump: `feat:` → minor, `fix:`/`refactor:`/`perf:` → patch, `BREAKING CHANGE` → major.
+- **Automation:** The `.github/workflows/release.yml` workflow runs on every push to `main`. After building, it invokes `semantic-release` which analyzes new commits, bumps the version, generates a changelog, creates a Git tag, and publishes a GitHub release.
+- **Configuration:** `.releaserc.json` at the repo root. Plugins: commit-analyzer, release-notes-generator, changelog, npm (version update), git (commit back changelog + package.json), github (create release).
