@@ -70,8 +70,24 @@ install_app "$(cat <<EOF
 EOF
 )"
 
+# Editor — Vite + React frontend served via nginx
+EDITOR_IMAGE="${EDITOR_IMAGE:-ghcr.io/ardo314/component-engine-editor:${VERSION}}"
+
+install_app "$(cat <<EOF
+{
+  "name": "component-engine-editor",
+  "app_icon": "favicon.ico",
+  "container_image": {
+    "image": "${EDITOR_IMAGE}"
+  },
+  "port": 8080,
+  "environment": []
+}
+EOF
+)"
+
 # ---------------------------------------------------------------------------
-# Add more apps here, e.g. workers, editor
+# Add more apps here, e.g. workers
 # ---------------------------------------------------------------------------
 
 echo ""
