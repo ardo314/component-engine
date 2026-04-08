@@ -6,7 +6,7 @@
     "modules/*",
     "workers/*"
   ],
-  "version": "1.0.0",
+  "version": "1.0.1",
   "scripts": {
     "build": "tsc --build tsconfig.packages.json",
     "clean": "tsc --build --clean tsconfig.packages.json",
