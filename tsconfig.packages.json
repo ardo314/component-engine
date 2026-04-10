@@ -10,6 +10,7 @@
     { "path": "modules/in-memory" },
     { "path": "modules/nova" },
     { "path": "workers/in-memory" },
-    { "path": "workers/nova" }
+    { "path": "workers/nova" },
+    { "path": "deployments/nova" }
   ]
 }

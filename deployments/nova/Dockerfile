@@ -1,14 +1,39 @@
-FROM alpine:3.21
+FROM node:25-slim AS build
+
+ARG VERSION=latest
+
+WORKDIR /app
+
+# Copy root workspace files
+COPY package.json tsconfig.json tsconfig.packages.json ./
+
+# Copy only the nova-deploy package
+COPY deployments/nova/package.json deployments/nova/
+COPY deployments/nova/tsconfig.json deployments/nova/
+
+RUN npm install --workspace=@engine/nova-deploy
+
+COPY deployments/nova/src/ deployments/nova/src/
+
+RUN npx tsc --build deployments/nova
+
+# --- production image ---
+FROM node:25-slim
 
 ARG VERSION=latest
 ENV VERSION=${VERSION}
 
-RUN apk add --no-cache curl jq bash
-
 WORKDIR /app
 
-COPY install-apps.sh ./
-RUN chmod +x install-apps.sh
+COPY package.json ./
+COPY deployments/nova/package.json deployments/nova/
 
-CMD ["./install-apps.sh"]
+RUN npm install --workspace=@engine/nova-deploy --omit=dev
+
+COPY --from=build /app/deployments/nova/dist/ deployments/nova/dist/
+
+USER node
+
+CMD ["node", "deployments/nova/dist/install.js"]
+
 

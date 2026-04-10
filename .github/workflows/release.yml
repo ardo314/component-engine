@@ -79,7 +79,7 @@ jobs:
       - name: Build and push nova image
         uses: docker/build-push-action@v6
         with:
-          context: deployments/nova
+          context: .
           file: deployments/nova/Dockerfile
           push: true
           build-args: |
