@@ -46,7 +46,7 @@ async function installApp(app: App) {
 
 await installApp(backendApp(backendImage, NATS, CELL));
 
-await installApp(editorApp(editorImage, "/nats", CELL));
+await installApp(editorApp(editorImage, "/api/nats", CELL));
 
 console.log("\nAll apps installed. component-engine-nova done.");
 
