@@ -4,8 +4,6 @@ metadata:
   name: component-engine
 
 build:
-  tagPolicy:
-    sha256: {}
   local:
     push: true
   artifacts:
@@ -21,10 +19,10 @@ build:
 
     - image: ghcr.io/ardo314/component-engine-nova
       context: .
+      requires:
+        - image: ghcr.io/ardo314/component-engine-backend
+          alias: BACKEND_IMAGE
+        - image: ghcr.io/ardo314/component-engine-editor
+          alias: EDITOR_IMAGE
       docker:
         dockerfile: deployments/nova/Dockerfile
-        requires:
-          - image: ghcr.io/ardo314/component-engine-backend
-            alias: BACKEND_IMAGE
-          - image: ghcr.io/ardo314/component-engine-editor
-            alias: EDITOR_IMAGE
