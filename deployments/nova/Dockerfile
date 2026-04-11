@@ -9,7 +9,7 @@ COPY package.json tsconfig.json tsconfig.packages.json ./
 COPY deployments/nova/package.json deployments/nova/
 COPY deployments/nova/tsconfig.json deployments/nova/
 
-RUN npm install --workspace=@engine/nova-deploy
+RUN npm install
 
 COPY deployments/nova/src/ deployments/nova/src/
 
