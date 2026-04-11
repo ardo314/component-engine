@@ -51,4 +51,6 @@ await installApp(editorApp(editorImage, "/nats", CELL));
 console.log("\nAll apps installed. component-engine-nova done.");
 
 // Keep the container alive so NOVA does not restart it.
-await new Promise(() => {});
+while (true) {
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+}
