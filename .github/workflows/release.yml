@@ -79,11 +79,12 @@ jobs:
       - name: Build and push nova image
         uses: docker/build-push-action@v6
         with:
-          context: deployments/nova
+          context: .
           file: deployments/nova/Dockerfile
           push: true
           build-args: |
-            VERSION=${{ steps.version.outputs.version }}
+            BACKEND_IMAGE=${{ env.BACKEND_IMAGE }}:${{ steps.version.outputs.version }}
+            EDITOR_IMAGE=${{ env.EDITOR_IMAGE }}:${{ steps.version.outputs.version }}
           tags: |
             ${{ env.NOVA_IMAGE }}:latest
             ${{ env.NOVA_IMAGE }}:${{ steps.version.outputs.version }}
