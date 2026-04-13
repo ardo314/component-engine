@@ -20,3 +20,12 @@ host.registerWorker(FollowPoseWorker);
 await host.listen();
 
 console.log("Worker host listening on NATS");
+
+const shutdown = async () => {
+  console.log("Draining NATS connection...");
+  await nc.drain();
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
+
+await nc.closed();

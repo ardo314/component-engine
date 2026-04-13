@@ -159,6 +159,24 @@ Container images are built from Dockerfiles within the respective packages and d
 
 The backend image is a multi-stage Node.js build. The editor image builds the Vite SPA in a Node.js stage and serves the static output with nginx on port 8080, with SPA fallback routing.
 
+### Local Development
+
+Start each service in a separate terminal inside the devcontainer. VS Code auto-forwards the ports to the host browser.
+
+```sh
+npm run build                    # compile TypeScript (or npm run watch)
+nats-server -c nats.conf         # start NATS
+node engine/backend/dist/index.js          # start backend
+node workers/in-memory/dist/index.js       # start in-memory worker host
+cd engine/editor && npm run dev             # start Vite dev server
+```
+
+NATS listens on port 4222 (client), 8222 (monitoring), and 9222 (WebSocket). The browser editor connects to NATS via WebSocket on port 9222. `nats.conf` at the repo root configures NATS with HTTP monitoring and WebSocket. `engine/editor/.env` provides the `VITE_NATS_URL` so Vite serves the correct WebSocket URL to the browser.
+
+### Graceful Shutdown
+
+Backend and worker entry points register SIGTERM/SIGINT handlers that call `nc.drain()`. Drain is a NATS built-in that processes all in-flight messages, unsubscribes, and then closes the connection.
+
 The `@engine/nova-deploy` package uses `@wandelbots/nova-api` to manage cell apps via the NOVA API and provides two entry points:
 
 - **`install-apps`** (`node dist/install.js`) — Production mode. Runs inside a NOVA cell app container. Reads `NOVA_API`, `CELL_NAME`, `NATS_BROKER`, `BACKEND_IMAGE`, `EDITOR_IMAGE`, and `WORKER_IMAGES` (comma-delimited image URLs) from the environment, installs the backend, editor, and worker apps via `ApplicationApi.addApp()`, and stays alive.
