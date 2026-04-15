@@ -19,7 +19,7 @@ npm run build                              # compile TypeScript (or npm run watc
 nats-server -c nats.conf                   # start NATS
 node engine/backend/dist/index.js          # start backend
 node workers/in-memory/dist/index.js       # start in-memory worker host
-cd engine/editor && npm run dev            # start Vite dev server
+cd engine/editor && npm run dev -- --host  # start Vite dev server
 ```
 
 The editor is available at <http://localhost:5173>.
