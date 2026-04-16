@@ -1,5 +1,5 @@
-import "./App.css";
 import "rc-dock/dist/rc-dock-dark.css";
+import "./App.css";
 import DockLayout, { type LayoutData, type TabData } from "rc-dock";
 import { EditorProvider, useEditor } from "./hooks/useEditorState";
 import { TopBar } from "./components/TopBar";
