@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/ardo314/component-engine/compare/v1.0.3...v1.1.0) (2026-04-18)
+
+### Features
+
+* worker deployment ([#11](https://github.com/ardo314/component-engine/issues/11)) ([df3b04d](https://github.com/ardo314/component-engine/commit/df3b04d2a278383016d28a0a8944d27353ff9933))
+
 ## [1.0.3](https://github.com/ardo314/component-engine/compare/v1.0.2...v1.0.3) (2026-04-12)
 
 ### Bug Fixes
