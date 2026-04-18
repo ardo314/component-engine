@@ -88,12 +88,23 @@ export type WorkerImplementation<C extends Component> = OwnWorkerImpl<
 
 export abstract class ComponentWorker {
   private subscriptions: Subscription[] = [];
+  protected nc!: NatsConnection;
+  protected entityId!: EntityId;
+
+  /** Called after the worker is fully wired (all subscriptions active). */
+  protected onAdded?(): void | Promise<void>;
+  /** Called before the worker is torn down (subscriptions still active). */
+  protected onRemoved?(): void | Promise<void>;
 
   /**
    * Start the worker for a given entity. Subscribes to per-property get/set
-   * and per-method subjects for the component and all its composites.
+   * and per-method subjects for the component and all its composites,
+   * then invokes the onAdded lifecycle hook.
    */
-  start(nc: NatsConnection, entityId: EntityId): void {
+  async start(nc: NatsConnection, entityId: EntityId): Promise<void> {
+    this.nc = nc;
+    this.entityId = entityId;
+
     const workerClass = this.constructor as ComponentWorkerClass;
     const component = getWorkerComponent(workerClass);
     const composites = getAllComposites(component);
@@ -121,10 +132,13 @@ export abstract class ComponentWorker {
         this.subscribeMethod(nc, targetId, entityId as string, name, def);
       }
     }
+
+    await this.onAdded?.();
   }
 
-  /** Stop the worker, unsubscribing from all topics. */
-  stop(): void {
+  /** Stop the worker: invokes onRemoved, then unsubscribes from all topics. */
+  async stop(): Promise<void> {
+    await this.onRemoved?.();
     for (const sub of this.subscriptions) sub.unsubscribe();
     this.subscriptions = [];
   }

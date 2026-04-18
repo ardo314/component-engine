@@ -61,7 +61,7 @@ export class WorkerHost {
 
           const key = `${entityId as string}:${componentId as string}`;
           const worker = new workerClass();
-          worker.start(this.nc, entityId);
+          await worker.start(this.nc, entityId);
           this.activeWorkers.set(key, worker);
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
@@ -85,7 +85,7 @@ export class WorkerHost {
           const key = `${entityId as string}:${componentId as string}`;
           const worker = this.activeWorkers.get(key);
           if (worker) {
-            worker.stop();
+            await worker.stop();
             this.activeWorkers.delete(key);
           }
         } catch (e) {
