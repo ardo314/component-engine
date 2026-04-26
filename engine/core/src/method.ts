@@ -23,10 +23,7 @@ export interface Method<
 export function defineMethod<
   const N extends string,
   const D extends MethodDefinition,
->(
-  name: N,
-  definition: D,
-): Method<N, D> {
+>(name: N, definition: D): Method<N, D> {
   return {
     __type: "method" as const,
     name,

@@ -26,9 +26,8 @@ type UnionToIntersection<U> = (
   ? I
   : never;
 
-type MethodRefEntry<M> = M extends Method<infer N, infer _D>
-  ? { [K in N]: InferMethod<M> }
-  : never;
+type MethodRefEntry<M> =
+  M extends Method<infer N, infer _D> ? { [K in N]: InferMethod<M> } : never;
 
 /** Typed reference produced by querying an entity: intersection of all method signatures keyed by name. */
 export type QueryReference<Q extends Query> =

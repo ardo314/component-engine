@@ -35,9 +35,10 @@ type InferWorkerMethod<M extends MethodDefinition> =
       ? () => z.infer<M["output"]> | Promise<z.infer<M["output"]>>
       : () => void | Promise<void>;
 
-type WorkerMethodImpl<M> = M extends Method<infer N, infer D>
-  ? { [K in N]: InferWorkerMethod<D> }
-  : never;
+type WorkerMethodImpl<M> =
+  M extends Method<infer N, infer D>
+    ? { [K in N]: InferWorkerMethod<D> }
+    : never;
 
 type UnionToIntersection<U> = (
   U extends unknown ? (k: U) => void : never

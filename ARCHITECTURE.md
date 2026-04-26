@@ -131,7 +131,7 @@ Both are defined in `@engine/core`.
 | `engine.world.deleteEntity`     | `EntityId`                         | `"true"/"false"`                        |
 | `engine.world.hasEntity`        | `EntityId`                         | `"true"/"false"`                        |
 | `engine.world.listEntities`     | _(empty)_                          | `EntityId[]` (JSON)                     |
-| `engine.entity.addComponent`    | `{ entityId, componentId }` (JSON) | `{ ok }` or `{ error }`                |
+| `engine.entity.addComponent`    | `{ entityId, componentId }` (JSON) | `{ ok }` or `{ error }`                 |
 | `engine.entity.removeComponent` | `{ entityId, componentId }` (JSON) | `"true"/"false"`                        |
 | `engine.entity.hasComponent`    | `{ entityId, componentId }` (JSON) | `"true"/"false"`                        |
 | `engine.entity.getComponents`   | `EntityId`                         | `[{ componentId, methodNames }]` (JSON) |
@@ -139,12 +139,12 @@ Both are defined in `@engine/core`.
 
 ### Lifecycle Subjects
 
-| Subject                     | Type          | Payload                                                | Description                                            |
-| --------------------------- | ------------- | ------------------------------------------------------ | ------------------------------------------------------ |
-| `engine.component.register` | Request/reply | `{ componentId, methodNames, schema }` → `{ ok }`      | Worker container registers a component with its schema |
-| `engine.component.list`     | Request/reply | _(empty)_ → `[{ componentId, methodNames, schema }]`   | List all registered components with schemas            |
-| `engine.worker.start`       | Publish       | `{ entityId, componentId }` (JSON)                     | Backend signals a worker should start                  |
-| `engine.worker.stop`        | Publish       | `{ entityId, componentId }` (JSON)                     | Backend signals a worker should stop                   |
+| Subject                     | Type          | Payload                                              | Description                                            |
+| --------------------------- | ------------- | ---------------------------------------------------- | ------------------------------------------------------ |
+| `engine.component.register` | Request/reply | `{ componentId, methodNames, schema }` → `{ ok }`    | Worker container registers a component with its schema |
+| `engine.component.list`     | Request/reply | _(empty)_ → `[{ componentId, methodNames, schema }]` | List all registered components with schemas            |
+| `engine.worker.start`       | Publish       | `{ entityId, componentId }` (JSON)                   | Backend signals a worker should start                  |
+| `engine.worker.stop`        | Publish       | `{ entityId, componentId }` (JSON)                   | Backend signals a worker should stop                   |
 
 ### Worker Subjects (per-component per-entity)
 

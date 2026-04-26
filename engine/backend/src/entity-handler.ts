@@ -233,9 +233,7 @@ export class EntityHandler {
     (async () => {
       for await (const msg of sub) {
         try {
-          const { entityId, methodNames } = JSON.parse(
-            sc.decode(msg.data),
-          ) as {
+          const { entityId, methodNames } = JSON.parse(sc.decode(msg.data)) as {
             entityId: EntityId;
             methodNames: string[];
           };
@@ -258,18 +256,14 @@ export class EntityHandler {
           // Check if all requested methods are covered
           const missing = methodNames.filter((m) => !(m in methodMap));
           if (missing.length > 0) {
-            msg.respond(
-              sc.encode(JSON.stringify({ match: false, missing })),
-            );
+            msg.respond(sc.encode(JSON.stringify({ match: false, missing })));
           } else {
             // Return only the requested methods' mapping
             const methods: Record<string, string> = {};
             for (const m of methodNames) {
               methods[m] = methodMap[m];
             }
-            msg.respond(
-              sc.encode(JSON.stringify({ match: true, methods })),
-            );
+            msg.respond(sc.encode(JSON.stringify({ match: true, methods })));
           }
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);

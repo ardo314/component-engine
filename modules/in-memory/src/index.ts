@@ -1,5 +1,12 @@
 import { defineComponent, defineMethod, entityIdSchema } from "@engine/core";
-import { getPose, setPose, getName, setName, getParent, setParent } from "@ardo314/core";
+import {
+  getPose,
+  setPose,
+  getName,
+  setName,
+  getParent,
+  setParent,
+} from "@ardo314/core";
 
 export const nameComponent = defineComponent("in-memory.name", [
   getName,

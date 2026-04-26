@@ -49,11 +49,7 @@ function createRemoteQueryReference<Q extends Query>(
     const componentId = methodMap[method.name];
     proxy[method.name] = async (input?: unknown) => {
       const reply = await nc.request(
-        WorkerSubjects.callMethod(
-          componentId,
-          entityId as string,
-          method.name,
-        ),
+        WorkerSubjects.callMethod(componentId, entityId as string, method.name),
         input !== undefined ? sc.encode(JSON.stringify({ input })) : undefined,
       );
       const result = JSON.parse(sc.decode(reply.data)) as {
@@ -117,15 +113,11 @@ export class Entity {
     return createRemoteComponentReference(this.nc, this.id, component);
   }
 
-  async query<Q extends Query>(
-    query: Q,
-  ): Promise<QueryReference<Q> | null> {
+  async query<Q extends Query>(query: Q): Promise<QueryReference<Q> | null> {
     const methodNames = query.methods.map((m) => m.name);
     const reply = await this.nc.request(
       Subjects.queryEntity,
-      sc.encode(
-        JSON.stringify({ entityId: this.id, methodNames }),
-      ),
+      sc.encode(JSON.stringify({ entityId: this.id, methodNames })),
     );
     const result = JSON.parse(sc.decode(reply.data)) as {
       match: boolean;

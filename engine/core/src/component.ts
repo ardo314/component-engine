@@ -7,9 +7,7 @@ export type ComponentId = string & { readonly __brand: unique symbol };
 
 // --- Component interface ---
 
-export interface Component<
-  MS extends readonly Method[] = readonly Method[],
-> {
+export interface Component<MS extends readonly Method[] = readonly Method[]> {
   readonly __type: "component";
   readonly id: ComponentId;
   readonly methods: MS;
@@ -31,10 +29,7 @@ export function defineComponent<const MS extends readonly Method[]>(
 
 // --- Conflict validation ---
 
-function validateMethodConflicts(
-  id: string,
-  methods: readonly Method[],
-): void {
+function validateMethodConflicts(id: string, methods: readonly Method[]): void {
   const seen = new Set<string>();
   for (const method of methods) {
     if (seen.has(method.name)) {
@@ -69,9 +64,8 @@ type UnionToIntersection<U> = (
   ? I
   : never;
 
-type MethodRefEntry<M> = M extends Method<infer N, infer _D>
-  ? { [K in N]: InferMethod<M> }
-  : never;
+type MethodRefEntry<M> =
+  M extends Method<infer N, infer _D> ? { [K in N]: InferMethod<M> } : never;
 
 /** Typed reference for a component: intersection of all method signatures keyed by name. */
 export type ComponentReference<C extends Component> =
