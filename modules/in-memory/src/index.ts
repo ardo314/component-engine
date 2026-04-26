@@ -23,11 +23,11 @@ export const poseComponent = defineComponent("in-memory.pose", [
   setPose,
 ]);
 
-export const getTarget = defineMethod("in-memory.getTarget", {
+export const getTarget = defineMethod("getTarget", {
   output: entityIdSchema,
 });
 
-export const setTarget = defineMethod("in-memory.setTarget", {
+export const setTarget = defineMethod("setTarget", {
   input: entityIdSchema,
 });
 

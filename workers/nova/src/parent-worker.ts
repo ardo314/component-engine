@@ -6,11 +6,11 @@ import { ComponentWorker, Implements } from "@engine/worker";
 export class ParentWorker extends ComponentWorker {
   private _parent: EntityId = entityIdSchema.parse("");
 
-  "core.getParent"() {
+  getParent() {
     return this._parent;
   }
 
-  "core.setParent"(input: EntityId) {
+  setParent(input: EntityId) {
     this._parent = input;
   }
 }

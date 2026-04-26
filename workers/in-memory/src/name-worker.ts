@@ -5,11 +5,11 @@ import { ComponentWorker, Implements } from "@engine/worker";
 export class NameWorker extends ComponentWorker {
   private _name = "";
 
-  "core.getName"() {
+  getName() {
     return this._name;
   }
 
-  "core.setName"(input: string) {
+  setName(input: string) {
     this._name = input;
   }
 }

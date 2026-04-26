@@ -8,19 +8,19 @@ export class FollowPoseWorker extends ComponentWorker {
   private _target: EntityId = entityIdSchema.parse("");
   private _pose: Pose = [0, 0, 0, 0, 0, 0];
 
-  "in-memory.getTarget"() {
+  getTarget() {
     return this._target;
   }
 
-  "in-memory.setTarget"(input: EntityId) {
+  setTarget(input: EntityId) {
     this._target = input;
   }
 
-  "core.getPose"() {
+  getPose() {
     return this._pose;
   }
 
-  "core.setPose"(input: Pose) {
+  setPose(input: Pose) {
     this._pose = input;
   }
 }

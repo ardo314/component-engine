@@ -53,27 +53,27 @@ export namespace Pose {
 
 // --- Standalone method definitions ---
 
-export const getPose = defineMethod("core.getPose", {
+export const getPose = defineMethod("getPose", {
   output: poseSchema,
 });
 
-export const setPose = defineMethod("core.setPose", {
+export const setPose = defineMethod("setPose", {
   input: poseSchema,
 });
 
-export const getName = defineMethod("core.getName", {
+export const getName = defineMethod("getName", {
   output: z.string(),
 });
 
-export const setName = defineMethod("core.setName", {
+export const setName = defineMethod("setName", {
   input: z.string(),
 });
 
-export const getParent = defineMethod("core.getParent", {
+export const getParent = defineMethod("getParent", {
   output: entityIdSchema,
 });
 
-export const setParent = defineMethod("core.setParent", {
+export const setParent = defineMethod("setParent", {
   input: entityIdSchema,
 });
 

@@ -6,11 +6,11 @@ import { ComponentWorker, Implements } from "@engine/worker";
 export class PoseWorker extends ComponentWorker {
   private _pose: Pose = [0, 0, 0, 0, 0, 0];
 
-  "core.getPose"() {
+  getPose() {
     return this._pose;
   }
 
-  "core.setPose"(input: Pose) {
+  setPose(input: Pose) {
     this._pose = input;
   }
 }
